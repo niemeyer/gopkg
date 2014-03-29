@@ -77,7 +77,8 @@ type Repo struct {
 	Version Version
 }
 
-var re = regexp.MustCompile(`^/([a-z0-9][-a-z0-9]+/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
+var patternOld = regexp.MustCompile(`^/([a-z0-9][-a-z0-9]+/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
+var patternNew = regexp.MustCompile(`^/([a-z0-9][-a-z0-9]+/)?([a-zA-Z][-a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
 
 func handler(resp http.ResponseWriter, req *http.Request) {
 	if req.URL.Path == "/health-check" {
@@ -88,42 +89,56 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	log.Printf("%s requested %s", req.RemoteAddr, req.URL)
 
 	if req.URL.Path == "/" {
-		resp.Header().Set("Location", "http://godoc.org/gopkg.in/v1/docs")
+		resp.Header().Set("Location", "http://godoc.org/gopkg.in/docs.v1")
 		resp.WriteHeader(http.StatusTemporaryRedirect)
 		return
 	}
 
-	m := re.FindStringSubmatch(req.URL.Path)
+	m := patternNew.FindStringSubmatch(req.URL.Path)
+	compat := false
 	if m == nil {
-		sendNotFound(resp, "Unsupported URL pattern; see the documentation at gopkg.in for details.")
-		return
+		m = patternOld.FindStringSubmatch(req.URL.Path)
+		if m == nil {
+			sendNotFound(resp, "Unsupported URL pattern; see the documentation at gopkg.in for details.")
+			return
+		}
+		m[2], m[3] = m[3], m[2]
+		compat = true
 	}
 
-	if strings.Contains(m[2], ".") {
-		sendNotFound(resp, "Import paths take the major version only (/%s/ instead of /%s/); see docs at gopkg.in for the reasoning.",
-			m[2][:strings.Index(m[2], ".")], m[2])
+	if strings.Contains(m[3], ".") {
+		sendNotFound(resp, "Import paths take the major version only (.%s instead of .%s); see docs at gopkg.in for the reasoning.",
+			m[3][:strings.Index(m[3], ".")], m[3])
 		return
 	}
 
 	var repo *Repo
 	if m[1] == "" {
 		repo = &Repo{
-			GitRoot: "https://github.com/go-" + m[3] + "/" + m[3],
-			PkgRoot: "gopkg.in/" + m[2] + "/" + m[3],
-			PkgPath: "gopkg.in/" + m[2] + "/" + m[3] + m[4],
+			GitRoot: "https://github.com/go-" + m[2] + "/" + m[2],
+			PkgRoot: "gopkg.in/" + m[2] + "." + m[3],
+			PkgPath: "gopkg.in/" + m[2] + "." + m[3] + m[4],
+		}
+		if compat {
+			repo.PkgRoot = "gopkg.in/" + m[3] + "/" + m[2]
+			repo.PkgPath = "gopkg.in/" + m[3] + "/" + m[2] + m[4]
 		}
 	} else {
 		repo = &Repo{
-			GitRoot: "https://github.com/" + m[1] + m[3],
-			PkgRoot: "gopkg.in/" + m[1] + m[2] + "/" + m[3],
-			PkgPath: "gopkg.in/" + m[1] + m[2] + "/" + m[3] + m[4],
+			GitRoot: "https://github.com/" + m[1] + m[2],
+			PkgRoot: "gopkg.in/" + m[1] + m[2] + "." + m[3],
+			PkgPath: "gopkg.in/" + m[1] + m[2] + "." + m[3] + m[4],
+		}
+		if compat {
+			repo.PkgRoot = "gopkg.in/" + m[1] + m[3] + "/" + m[2]
+			repo.PkgPath = "gopkg.in/" + m[1] + m[3] + "/" + m[2] + m[4]
 		}
 	}
 
 	var ok bool
-	repo.Version, ok = parseVersion(m[2])
+	repo.Version, ok = parseVersion(m[3])
 	if !ok {
-		sendNotFound(resp, "Version %q improperly considered invalid; please warn the service maintainers.", m[2])
+		sendNotFound(resp, "Version %q improperly considered invalid; please warn the service maintainers.", m[3])
 	}
 
 	repo.HubRoot = repo.GitRoot
@@ -142,7 +157,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 			repo.HubRoot += "-" + v
 			break
 		}
-		sendNotFound(resp, "GitHub repository not found at %s or %s-%s", repo.HubRoot, repo.HubRoot, repo.Version)
+		sendNotFound(resp, "GitHub repository not found at %s", repo.HubRoot)
 		return
 	case ErrNoVersion:
 		v := repo.Version.String()
@@ -188,6 +203,7 @@ func sendNotFound(resp http.ResponseWriter, msg string, args ...interface{}) {
 
 const refsSuffix = ".git/info/refs?service=git-upload-pack"
 
+// Obsolete. Drop this.
 func nameHasVersion(repo *Repo) chan bool {
 	ch := make(chan bool, 1)
 	go func() {
