@@ -89,7 +89,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	log.Printf("%s requested %s", req.RemoteAddr, req.URL)
 
 	if req.URL.Path == "/" {
-		resp.Header().Set("Location", "http://godoc.org/gopkg.in/docs.v1")
+		resp.Header().Set("Location", "http://labix.org/gopkg.in")
 		resp.WriteHeader(http.StatusTemporaryRedirect)
 		return
 	}
