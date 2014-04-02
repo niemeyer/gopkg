@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 type Version struct {
@@ -55,46 +57,28 @@ func parseVersion(s string) (Version, bool) {
 		return InvalidVersion, false
 	}
 	v := Version{-1, -1, -1}
-	i := 1
-	v.Major, i = parseVersionPart(s, i)
-	if i < 0 {
-		return InvalidVersion, false
-	}
-	if i == len(s) {
-		return v, true
-	}
-	v.Minor, i = parseVersionPart(s, i)
-	if i < 0 {
-		return InvalidVersion, false
-	}
-	if i == len(s) {
-		return v, true
-	}
-	v.Patch, i = parseVersionPart(s, i)
-	if i < 0 || i < len(s) {
-		return InvalidVersion, false
-	}
-	return v, true
-}
 
-func parseVersionPart(s string, i int) (part int, newi int) {
-	dot := i
-	for dot < len(s) && s[dot] != '.' {
-		dot++
+	parts := strings.Split(s[1:], ".")
+	if len(parts) == 0 || len(parts) > 3 {
+		return InvalidVersion, false
 	}
-	if dot == i || dot-i > 1 && s[i] == '0' {
-		return -1, -1
-	}
-	for i < len(s) {
-		if s[i] < '0' || s[i] > '9' {
-			return -1, -1
+	for i, part := range parts {
+		if len(part) == 0 || part[0] == '0' {
+			return InvalidVersion, false
 		}
-		part *= 10
-		part += int(s[i] - '0')
-		i++
-		if i+1 < len(s) && s[i] == '.' {
-			return part, i+1
+		num, err := strconv.Atoi(part)
+		if err != nil {
+			return InvalidVersion, false
+		}
+		switch i {
+		case 0:
+			v.Major = num
+		case 1:
+			v.Minor = num
+		case 2:
+			v.Patch = num
 		}
 	}
-	return part, i
+
+	return v, true
 }
