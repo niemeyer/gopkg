@@ -64,10 +64,7 @@ func parseVersion(s string) (Version, bool) {
 		return InvalidVersion, false
 	}
 	for i, part := range parts {
-		if len(part) == 0 {
-			return InvalidVersion, false
-		}
-		if len(part) > 1 && part[0] == '0' {
+		if len(part) == 0 || part[0] == '0' {
 			return InvalidVersion, false
 		}
 		num, err := strconv.ParseInt(part, 10, 32)
@@ -87,8 +84,5 @@ func parseVersion(s string) (Version, bool) {
 		}
 	}
 
-	if v == InvalidVersion {
-		return InvalidVersion, false
-	}
 	return v, true
 }
