@@ -91,9 +91,12 @@ func parseVersionPart(s string, i int) (part int, newi int) {
 		}
 		part *= 10
 		part += int(s[i] - '0')
+		if part < 0 {
+			return -1, -1
+		}
 		i++
 		if i+1 < len(s) && s[i] == '.' {
-			return part, i+1
+			return part, i + 1
 		}
 	}
 	return part, i

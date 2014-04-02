@@ -139,6 +139,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	repo.Version, ok = parseVersion(m[3])
 	if !ok {
 		sendNotFound(resp, "Version %q improperly considered invalid; please warn the service maintainers.", m[3])
+		return
 	}
 
 	repo.HubRoot = repo.GitRoot
