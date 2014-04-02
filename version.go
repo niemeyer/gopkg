@@ -48,7 +48,6 @@ func (v Version) IsValid() bool {
 }
 
 var InvalidVersion = Version{-1, -1, -1}
-var TooHighVersion = Version{-2, -2, -2}
 
 func parseVersion(s string) (Version, bool) {
 	if len(s) < 2 {
@@ -67,20 +66,17 @@ func parseVersion(s string) (Version, bool) {
 		if len(part) == 0 || part[0] == '0' {
 			return InvalidVersion, false
 		}
-		num, err := strconv.ParseInt(part, 10, 32)
+		num, err := strconv.Atoi(part)
 		if err != nil {
-			if err.(*strconv.NumError).Err == strconv.ErrRange {
-				return TooHighVersion, false
-			}
 			return InvalidVersion, false
 		}
 		switch i {
 		case 0:
-			v.Major = int(num)
+			v.Major = num
 		case 1:
-			v.Minor = int(num)
+			v.Minor = num
 		case 2:
-			v.Patch = int(num)
+			v.Patch = num
 		}
 	}
 
