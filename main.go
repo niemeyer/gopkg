@@ -138,6 +138,10 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	var ok bool
 	repo.Version, ok = parseVersion(m[3])
 	if !ok {
+		if repo.Version == TooHighVersion {
+			sendNotFound(resp, "Version %q contains a number which is out of range.", m[3])
+			return
+		}
 		sendNotFound(resp, "Version %q improperly considered invalid; please warn the service maintainers.", m[3])
 		return
 	}
