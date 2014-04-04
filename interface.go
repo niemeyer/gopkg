@@ -166,9 +166,9 @@ func init() {
 }
 
 type dataPackage struct {
-	Repo           *Repo       // repo object
-	LatestVersions VersionList // versionlist containing only the latest version for each major
-	FullVersion    Version     // full version that the requeste version resolves to
+	Repo           *Repo
+	LatestVersions VersionList // Contains only the latest version for each major
+	FullVersion    Version     // Version that the major requested resolves to
 }
 
 func renderInterface(resp http.ResponseWriter, req *http.Request, repo *Repo) {
