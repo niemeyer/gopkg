@@ -70,7 +70,7 @@ window.location = "http://godoc.org/{{.PkgPath}}" + window.location.hash;
 `))
 
 type Repo struct {
-	User       string // username or organization, might include forward slash
+	User       string // username or organization, includes forward slash
 	Pkg        string // repository name
 	VersionStr string // version string ("v1")
 	Path       string // path inside repository
