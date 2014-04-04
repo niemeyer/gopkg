@@ -158,15 +158,11 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// // Run this concurrently to avoid waiting later.
-	// nameVersioned := nameHasVersion(repo)
-
 	var err error
 	var refs []byte
 	refs, repo.Versions, err = hackedRefs(repo)
 	switch err {
 	case nil:
-		// repo.GitRoot = "https://" + repo.PkgRoot
 		// all ok
 	case ErrNoRepo:
 		// if <-nameVersioned {
@@ -229,23 +225,6 @@ func sendNotFound(resp http.ResponseWriter, msg string, args ...interface{}) {
 // TODO Timeouts for these http interactions. Use the new support coming in 1.3.
 
 const refsSuffix = ".git/info/refs?service=git-upload-pack"
-
-// // Obsolete. Drop this.
-// func nameHasVersion(repo *Repo) chan bool {
-// 	ch := make(chan bool, 1)
-// 	go func() {
-// 		resp, err := http.Head(repo.HubRoot + "-" + repo.Version.String() + refsSuffix)
-// 		if err != nil {
-// 			ch <- false
-// 			return
-// 		}
-// 		if resp.Body != nil {
-// 			resp.Body.Close()
-// 		}
-// 		ch <- resp.StatusCode == 200
-// 	}()
-// 	return ch
-// }
 
 var ErrNoRepo = errors.New("repository not found in github")
 var ErrNoVersion = errors.New("version reference not found in github")
