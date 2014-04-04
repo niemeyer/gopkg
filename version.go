@@ -105,13 +105,6 @@ func parseVersionPart(s string, i int) (part int, newi int) {
 // VersionList implements sort.Interface
 type VersionList []Version
 
-func (vl VersionList) Len() int {
-	return len(vl)
-}
-func (vl VersionList) Less(i, j int) bool {
-	return vl[i].Less(vl[j])
-}
-
-func (vl VersionList) Swap(i, j int) {
-	vl[i], vl[j] = vl[j], vl[i]
-}
+func (vl VersionList) Len() int           { return len(vl) }
+func (vl VersionList) Less(i, j int) bool { return vl[i].Less(vl[j]) }
+func (vl VersionList) Swap(i, j int)      { vl[i], vl[j] = vl[j], vl[i] }
