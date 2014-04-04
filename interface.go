@@ -13,10 +13,10 @@ const tmplStrPackage = `<!DOCTYPE html>
 <html >
 	<head>
 		<meta charset="utf-8">
-		<title>{{.Repo.PkgPath}}</title>
-		<link href='//fonts.googleapis.com/css?family=Ubuntu+Mono|Ubuntu' rel='stylesheet' type='text/css'>
-		<link href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css" rel="stylesheet">
-		<link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
+		<title>{{.Repo.Pkg}}.{{.Repo.Version}}{{.Repo.Path}} - {{.Repo.PkgPath}}</title>
+		<link href='//fonts.googleapis.com/css?family=Ubuntu+Mono|Ubuntu' rel='stylesheet' >
+		<link href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css" rel="stylesheet" >
+		<link href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css" rel="stylesheet" >
 		<style>
 			html,
 			body {
@@ -41,8 +41,16 @@ const tmplStrPackage = `<!DOCTYPE html>
 				padding-top: 20px;
 			}
 
-			.getting-started {
+			.getting-started div {
+				padding-top: 12px;
+			}
+
+			.getting-started p {
 				font-size: 1.3em;
+			}
+
+			.getting-started pre {
+				font-size: 15px;
 			}
 
 			.versions {
@@ -72,6 +80,8 @@ const tmplStrPackage = `<!DOCTYPE html>
 			#footer {
 				height: 40px;
 				background-color: #eee;
+				padding-top: 8px;
+				text-align: center;
 			}
 
 			/* footer fixes for mobile devices */
@@ -96,25 +106,26 @@ const tmplStrPackage = `<!DOCTYPE html>
 					</div>
 				</div>
 				<div class="row" >
-					<div class="col-sm-8" >
-						<a class="btn btn-lg btn-info" href="{{.Repo.HubRoot}}/tree/{{.FullVersion.String}}" ><i class="fa fa-github"></i> Source Code</a>
+					<div class="col-sm-12" >
+						<a class="btn btn-lg btn-info" href="{{.Repo.HubRoot}}/tree/{{.FullVersion.String}}{{.Repo.Path}}" ><i class="fa fa-github"></i> Source Code</a>
 						<a class="btn btn-lg btn-info" href="http://godoc.org/{{.Repo.PkgPath}}" ><i class="fa fa-info-circle"></i> API Documentation</a>
-					</div>
-					<div class="col-sm-4" >
 					</div>
 				</div>
 				<div class="row main" >
 					<div class="col-sm-8 info" >
 						<div class="getting-started" >
 							<h2>Getting started</h2>
-							<p>To get the package, execute:</p>
-							<pre>go get {{.Repo.PkgPath}}</pre>
-
-							<p>To import this package, add the following line to your code:</p>
-							<pre>import "{{.Repo.PkgPath}}"</pre>
+							<div>
+								<p>To get the package, execute:</p>
+								<pre>go get {{.Repo.PkgPath}}</pre>
+							</div>
+							<div>
+								<p>To import this package, add the following line to your code:</p>
+								<pre>import "{{.Repo.PkgPath}}"</pre>
+							</div>
 						</div>
 					</div>
-					<div class="col-sm-4 versions" >
+					<div class="col-sm-3 col-sm-offset-1 versions" >
 						<h2>Versions</h2>
 						{{ range .LatestVersions }}
 							<div>
@@ -132,7 +143,7 @@ const tmplStrPackage = `<!DOCTYPE html>
 			<div class="container">
 				<div class="row">
 					<div class="col-sm-12">
-						<p class="text-muted credit"><a href="http://gopkg.in">http://gopkg.in<a></p>
+						<p class="text-muted credit"><a href="https://gopkg.in">gopkg.in<a></p>
 					</div>
 				</div>
 			</div>
