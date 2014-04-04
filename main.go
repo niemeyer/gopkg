@@ -56,7 +56,7 @@ func run() error {
 	return <-ch
 }
 
-var tmpl = template.Must(template.New("").Parse(`
+var tmplProxy = template.Must(template.New("").Parse(`
 <html>
 <head>
 <meta name="go-import" content="{{.PkgRoot}} git {{.GitRoot}}">
@@ -70,11 +70,40 @@ window.location = "http://godoc.org/{{.PkgPath}}" + window.location.hash;
 `))
 
 type Repo struct {
-	GitRoot string
-	HubRoot string
-	PkgRoot string
-	PkgPath string
-	Version Version
+	User       string // username or organization, might include forward slash
+	Pkg        string // repository name
+	VersionStr string // version string ("v1")
+	Path       string // path inside repository
+	Compat     bool   // when true, use old format
+
+	Version  Version     // requested version (major only)
+	Versions VersionList // available versions
+}
+
+func (repo *Repo) GitRoot() string {
+	return "https://" + repo.PkgRoot()
+}
+
+func (repo *Repo) HubRoot() string {
+	if len(repo.User) == 0 {
+		return "https://github.com/go-" + repo.Pkg + "/" + repo.Pkg
+	}
+	return "https://github.com/" + repo.User + repo.Pkg
+}
+
+func (repo *Repo) PkgBase() string {
+	return "gopkg.in/" + repo.User + repo.Pkg
+}
+
+func (repo *Repo) PkgRoot() string {
+	if repo.Compat {
+		return "gopkg.in/" + repo.User + repo.VersionStr + "/" + repo.Pkg
+	}
+	return repo.PkgBase() + "." + repo.VersionStr
+}
+
+func (repo *Repo) PkgPath() string {
+	return repo.PkgRoot() + repo.Path
 }
 
 var patternOld = regexp.MustCompile(`^/([a-z0-9][-a-z0-9]+/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
@@ -94,6 +123,8 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	goget := req.FormValue("go-get") == "1"
+
 	m := patternNew.FindStringSubmatch(req.URL.Path)
 	compat := false
 	if m == nil {
@@ -112,62 +143,48 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var repo *Repo
-	if m[1] == "" {
-		repo = &Repo{
-			GitRoot: "https://github.com/go-" + m[2] + "/" + m[2],
-			PkgRoot: "gopkg.in/" + m[2] + "." + m[3],
-			PkgPath: "gopkg.in/" + m[2] + "." + m[3] + m[4],
-		}
-		if compat {
-			repo.PkgRoot = "gopkg.in/" + m[3] + "/" + m[2]
-			repo.PkgPath = "gopkg.in/" + m[3] + "/" + m[2] + m[4]
-		}
-	} else {
-		repo = &Repo{
-			GitRoot: "https://github.com/" + m[1] + m[2],
-			PkgRoot: "gopkg.in/" + m[1] + m[2] + "." + m[3],
-			PkgPath: "gopkg.in/" + m[1] + m[2] + "." + m[3] + m[4],
-		}
-		if compat {
-			repo.PkgRoot = "gopkg.in/" + m[1] + m[3] + "/" + m[2]
-			repo.PkgPath = "gopkg.in/" + m[1] + m[3] + "/" + m[2] + m[4]
-		}
+	repo := &Repo{
+		User:       m[1],
+		Pkg:        m[2],
+		VersionStr: m[3],
+		Path:       m[4],
+		Compat:     compat,
 	}
 
 	var ok bool
-	repo.Version, ok = parseVersion(m[3])
+	repo.Version, ok = parseVersion(repo.VersionStr)
 	if !ok {
 		sendNotFound(resp, "Version %q improperly considered invalid; please warn the service maintainers.", m[3])
 		return
 	}
 
-	repo.HubRoot = repo.GitRoot
+	// // Run this concurrently to avoid waiting later.
+	// nameVersioned := nameHasVersion(repo)
 
-	// Run this concurrently to avoid waiting later.
-	nameVersioned := nameHasVersion(repo)
-
-	refs, err := hackedRefs(repo)
+	var err error
+	var refs []byte
+	refs, repo.Versions, err = hackedRefs(repo)
 	switch err {
 	case nil:
-		repo.GitRoot = "https://" + repo.PkgRoot
+		// repo.GitRoot = "https://" + repo.PkgRoot
+		// all ok
 	case ErrNoRepo:
-		if <-nameVersioned {
-			v := repo.Version.String()
-			repo.GitRoot += "-" + v
-			repo.HubRoot += "-" + v
-			break
-		}
-		sendNotFound(resp, "GitHub repository not found at %s", repo.HubRoot)
+		// if <-nameVersioned {
+		// 	v := repo.Version.String()
+		// 	repo.GitRoot += "-" + v
+		// 	repo.HubRoot += "-" + v
+		// 	break
+		// }
+		sendNotFound(resp, "GitHub repository not found at %s", repo.HubRoot())
 		return
 	case ErrNoVersion:
 		v := repo.Version.String()
 		if repo.Version.Minor == -1 {
-			sendNotFound(resp, `GitHub repository at %s has no branch or tag "%s", "%s.N" or "%s.N.M"`, repo.HubRoot, v, v, v)
+			sendNotFound(resp, `GitHub repository at %s has no branch or tag "%s", "%s.N" or "%s.N.M"`, repo.HubRoot(), v, v, v)
 		} else if repo.Version.Patch == -1 {
-			sendNotFound(resp, `GitHub repository at %s has no branch or tag "%s" or "%s.N"`, repo.HubRoot, v, v)
+			sendNotFound(resp, `GitHub repository at %s has no branch or tag "%s" or "%s.N"`, repo.HubRoot(), v, v)
 		} else {
-			sendNotFound(resp, `GitHub repository at %s has no branch or tag "%s"`, repo.HubRoot, v)
+			sendNotFound(resp, `GitHub repository at %s has no branch or tag "%s"`, repo.HubRoot(), v)
 		}
 		return
 	default:
@@ -177,7 +194,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	}
 
 	if m[4] == "/git-upload-pack" {
-		resp.Header().Set("Location", repo.HubRoot+"/git-upload-pack")
+		resp.Header().Set("Location", repo.HubRoot()+"/git-upload-pack")
 		resp.WriteHeader(http.StatusMovedPermanently)
 		return
 	}
@@ -189,7 +206,16 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	}
 
 	resp.Header().Set("Content-Type", "text/html")
-	tmpl.Execute(resp, repo)
+	if goget {
+		// execute simple template when this is a go-get request
+		err = tmplProxy.Execute(resp, repo)
+		if err != nil {
+			log.Printf("error executing tmplProxy: %s\n", err)
+		}
+		return
+	}
+
+	renderInterface(resp, req, repo)
 }
 
 func sendNotFound(resp http.ResponseWriter, msg string, args ...interface{}) {
@@ -204,43 +230,43 @@ func sendNotFound(resp http.ResponseWriter, msg string, args ...interface{}) {
 
 const refsSuffix = ".git/info/refs?service=git-upload-pack"
 
-// Obsolete. Drop this.
-func nameHasVersion(repo *Repo) chan bool {
-	ch := make(chan bool, 1)
-	go func() {
-		resp, err := http.Head(repo.HubRoot + "-" + repo.Version.String() + refsSuffix)
-		if err != nil {
-			ch <- false
-			return
-		}
-		if resp.Body != nil {
-			resp.Body.Close()
-		}
-		ch <- resp.StatusCode == 200
-	}()
-	return ch
-}
+// // Obsolete. Drop this.
+// func nameHasVersion(repo *Repo) chan bool {
+// 	ch := make(chan bool, 1)
+// 	go func() {
+// 		resp, err := http.Head(repo.HubRoot + "-" + repo.Version.String() + refsSuffix)
+// 		if err != nil {
+// 			ch <- false
+// 			return
+// 		}
+// 		if resp.Body != nil {
+// 			resp.Body.Close()
+// 		}
+// 		ch <- resp.StatusCode == 200
+// 	}()
+// 	return ch
+// }
 
 var ErrNoRepo = errors.New("repository not found in github")
 var ErrNoVersion = errors.New("version reference not found in github")
 
-func hackedRefs(repo *Repo) (data []byte, err error) {
-	resp, err := http.Get(repo.HubRoot + refsSuffix)
+func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
+	resp, err := http.Get(repo.HubRoot() + refsSuffix)
 	if err != nil {
-		return nil, fmt.Errorf("cannot talk to GitHub: %v", err)
+		return nil, nil, fmt.Errorf("cannot talk to GitHub: %v", err)
 	}
 	switch resp.StatusCode {
 	case 200:
 		defer resp.Body.Close()
 	case 401, 404:
-		return nil, ErrNoRepo
+		return nil, nil, ErrNoRepo
 	default:
-		return nil, fmt.Errorf("error from GitHub: %v", resp.Status)
+		return nil, nil, fmt.Errorf("error from GitHub: %v", resp.Status)
 	}
 
 	data, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error reading from GitHub: %v", err)
+		return nil, nil, fmt.Errorf("error reading from GitHub: %v", err)
 	}
 
 	var mrefi, mrefj int
@@ -248,18 +274,19 @@ func hackedRefs(repo *Repo) (data []byte, err error) {
 	var vrefv = InvalidVersion
 	var unversioned = true
 
+	versions = make([]Version, 0)
 	sdata := string(data)
 	for i, j := 0, 0; i < len(data); i = j {
 		size, err := strconv.ParseInt(sdata[i:i+4], 16, 32)
 		if err != nil {
-			return nil, fmt.Errorf("cannot parse refs line size: %s", string(data[i:i+4]))
+			return nil, nil, fmt.Errorf("cannot parse refs line size: %s", string(data[i:i+4]))
 		}
 		if size == 0 {
 			size = 4
 		}
 		j = i + int(size)
 		if j > len(sdata) {
-			return nil, fmt.Errorf("incomplete refs data received from GitHub")
+			return nil, nil, fmt.Errorf("incomplete refs data received from GitHub")
 		}
 		if sdata[0] == '#' {
 			continue
@@ -296,19 +323,20 @@ func hackedRefs(repo *Repo) (data []byte, err error) {
 			}
 			if ok {
 				unversioned = false
+				versions = append(versions, v)
 			}
 		}
 	}
 
 	// If there were absolutely no versions, and v0 was requested, accept the master as-is.
 	if unversioned && repo.Version == (Version{0, -1, -1}) {
-		return data, nil
+		return data, nil, nil
 	}
 
 	if mrefi == 0 || vrefi == 0 {
-		return nil, ErrNoVersion
+		return nil, nil, ErrNoVersion
 	}
 
 	copy(data[mrefi:mrefj], data[vrefi:vrefj])
-	return data, nil
+	return data, versions, nil
 }
