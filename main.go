@@ -243,7 +243,6 @@ func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
 	var mrefi, mrefj int
 	var vrefi, vrefj int
 	var vrefv = InvalidVersion
-	var unversioned = true
 
 	versions = make([]Version, 0)
 	sdata := string(data)
@@ -293,14 +292,13 @@ func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
 				vrefj = hashj
 			}
 			if ok {
-				unversioned = false
 				versions = append(versions, v)
 			}
 		}
 	}
 
 	// If there were absolutely no versions, and v0 was requested, accept the master as-is.
-	if unversioned && repo.Version == (Version{0, -1, -1}) {
+	if len(versions) == 0 && repo.Version == (Version{0, -1, -1}) {
 		return data, nil, nil
 	}
 
