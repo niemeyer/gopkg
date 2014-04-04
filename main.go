@@ -163,12 +163,6 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	case nil:
 		// all ok
 	case ErrNoRepo:
-		// if <-nameVersioned {
-		// 	v := repo.Version.String()
-		// 	repo.GitRoot += "-" + v
-		// 	repo.HubRoot += "-" + v
-		// 	break
-		// }
 		sendNotFound(resp, "GitHub repository not found at %s", repo.HubRoot())
 		return
 	case ErrNoVersion:
