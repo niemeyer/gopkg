@@ -18,6 +18,11 @@ const tmplStrPackage = `<!DOCTYPE html>
 		<link href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css" rel="stylesheet">
 		<link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
 		<style>
+			html,
+			body {
+				height: 100%;
+			}
+
 			@media (min-width: 1200px) {
 				.container {
 					width: 970px;
@@ -53,46 +58,82 @@ const tmplStrPackage = `<!DOCTYPE html>
 				color: black;
 				font-decoration: none;
 			}
+
+			/* wrapper for page content to push down footer */
+			#wrap {
+				min-height: 100%;
+				height: auto !important;
+				height: 100%;
+				/* negative indent footer by it's height */
+				margin: 0 auto -40px;
+			}
+
+			/* footer styling */
+			#footer {
+				height: 40px;
+				background-color: #eee;
+			}
+
+			/* footer fixes for mobile devices */
+			@media (max-width: 767px) {
+				#footer {
+					margin-left: -20px;
+					margin-right: -20px;
+					padding-left: 20px;
+					padding-right: 20px;
+				}
+			}
 		</style>
 	</head>
 	<body>
-
-		<div class="container" >
-			<div class="row" >
-				<div class="col-sm-12" >
-					<div class="page-header">
-						<h1>{{.Repo.PkgPath}}</h1>
-					</div>
-				</div>
-			</div>
-			<div class="row" >
-				<div class="col-sm-8" >
-					<a class="btn btn-lg btn-info" href="{{.Repo.HubRoot}}/tree/{{.FullVersion.String}}" ><i class="fa fa-github"></i> Source Code</a>
-					<a class="btn btn-lg btn-info" href="http://godoc.org/{{.Repo.PkgPath}}" ><i class="fa fa-info-circle"></i> API Documentation</a>
-				</div>
-				<div class="col-sm-4" >
-				</div>
-			</div>
-			<div class="row main" >
-				<div class="col-sm-8 info" >
-					<div class="getting-started" >
-						<h2>Getting started</h2>
-						<p>To get the package, execute:</p>
-						<pre>go get {{.Repo.PkgPath}}</pre>
-						
-						<p>To import this package, add the following line to your code:</p>
-						<pre>import "{{.Repo.PkgPath}}"</pre>
-					</div>
-				</div>
-				<div class="col-sm-4 versions" >
-					<h2>Versions</h2>
-					{{ range .LatestVersions }}
-						<div>
-							<a href='//{{$.Repo.PkgBase}}.v{{.Major}}' {{if eq .Major $.Repo.Version.Major}}class="current"{{end}} >v{{.Major}}</a>
-							&rarr;
-							<span class="label label-default">{{.String}}</span>
+		<div id="wrap" >
+			<div class="container" >
+				<div class="row" >
+					<div class="col-sm-12" >
+						<div class="page-header">
+							<h1>{{.Repo.PkgPath}}</h1>
 						</div>
-					{{ end }}
+					</div>
+				</div>
+				<div class="row" >
+					<div class="col-sm-8" >
+						<a class="btn btn-lg btn-info" href="{{.Repo.HubRoot}}/tree/{{.FullVersion.String}}" ><i class="fa fa-github"></i> Source Code</a>
+						<a class="btn btn-lg btn-info" href="http://godoc.org/{{.Repo.PkgPath}}" ><i class="fa fa-info-circle"></i> API Documentation</a>
+					</div>
+					<div class="col-sm-4" >
+					</div>
+				</div>
+				<div class="row main" >
+					<div class="col-sm-8 info" >
+						<div class="getting-started" >
+							<h2>Getting started</h2>
+							<p>To get the package, execute:</p>
+							<pre>go get {{.Repo.PkgPath}}</pre>
+
+							<p>To import this package, add the following line to your code:</p>
+							<pre>import "{{.Repo.PkgPath}}"</pre>
+						</div>
+					</div>
+					<div class="col-sm-4 versions" >
+						<h2>Versions</h2>
+						{{ range .LatestVersions }}
+							<div>
+								<a href='//{{$.Repo.PkgBase}}.v{{.Major}}' {{if eq .Major $.Repo.Version.Major}}class="current"{{end}} >v{{.Major}}</a>
+								&rarr;
+								<span class="label label-default">{{.String}}</span>
+							</div>
+						{{ end }}
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div id="footer">
+			<div class="container">
+				<div class="row">
+					<div class="col-sm-12">
+						<p class="text-muted credit"><a href="http://gopkg.in">http://gopkg.in<a></p>
+					</div>
 				</div>
 			</div>
 		</div>
