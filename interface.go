@@ -107,7 +107,7 @@ const tmplStrPackage = `<!DOCTYPE html>
 				</div>
 				<div class="row" >
 					<div class="col-sm-12" >
-						<a class="btn btn-lg btn-info" href="{{.Repo.HubRoot}}/tree/{{.FullVersion.String}}{{.Repo.Path}}" ><i class="fa fa-github"></i> Source Code</a>
+						<a class="btn btn-lg btn-info" href="{{.Repo.HubRoot}}{{if .Repo.Versions}}/tree/{{.FullVersion.String}}{{.Repo.Path}}{{end}}" ><i class="fa fa-github"></i> Source Code</a>
 						<a class="btn btn-lg btn-info" href="http://godoc.org/{{.Repo.PkgPath}}" ><i class="fa fa-info-circle"></i> API Documentation</a>
 					</div>
 				</div>
@@ -127,11 +127,19 @@ const tmplStrPackage = `<!DOCTYPE html>
 					</div>
 					<div class="col-sm-3 col-sm-offset-1 versions" >
 						<h2>Versions</h2>
-						{{ range .LatestVersions }}
+						{{ if .LatestVersions }}
+							{{ range .LatestVersions }}
+								<div>
+									<a href='//{{$.Repo.PkgBase}}.v{{.Major}}' {{if eq .Major $.Repo.Version.Major}}class="current"{{end}} >v{{.Major}}</a>
+									&rarr;
+									<span class="label label-default">{{.String}}</span>
+								</div>
+							{{ end }}
+						{{ else }}
 							<div>
-								<a href='//{{$.Repo.PkgBase}}.v{{.Major}}' {{if eq .Major $.Repo.Version.Major}}class="current"{{end}} >v{{.Major}}</a>
+								<a href='//{{$.Repo.PkgBase}}.v0' {{if eq 0 $.Repo.Version.Major}}class="current"{{end}} >v0</a>
 								&rarr;
-								<span class="label label-default">{{.String}}</span>
+								<span class="label label-default">master</span>
 							</div>
 						{{ end }}
 					</div>
