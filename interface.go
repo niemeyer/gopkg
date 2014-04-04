@@ -14,7 +14,7 @@ const tmplStrPackage = `<!DOCTYPE html>
 	<head>
 		<meta charset="utf-8">
 		<title>{{.Repo.PkgPath}}</title>
-		<link href='http://fonts.googleapis.com/css?family=Ubuntu+Mono|Ubuntu' rel='stylesheet' type='text/css'>
+		<link href='//fonts.googleapis.com/css?family=Ubuntu+Mono|Ubuntu' rel='stylesheet' type='text/css'>
 		<link href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css" rel="stylesheet">
 		<link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
 		<style>
@@ -77,10 +77,10 @@ const tmplStrPackage = `<!DOCTYPE html>
 				<div class="col-sm-8 info" >
 					<div class="getting-started" >
 						<h2>Getting started</h2>
-						To get the package, execute:
+						<p>To get the package, execute:</p>
 						<pre>go get {{.Repo.PkgPath}}</pre>
-
-						To import this package, add the following line to your code:
+						
+						<p>To import this package, add the following line to your code:</p>
 						<pre>import "{{.Repo.PkgPath}}"</pre>
 					</div>
 				</div>
