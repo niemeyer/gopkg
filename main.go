@@ -211,6 +211,7 @@ func nameHasVersion(repo *Repo) chan bool {
 		resp, err := http.Head(repo.HubRoot + "-" + repo.Version.String() + refsSuffix)
 		if err != nil {
 			ch <- false
+			return
 		}
 		if resp.Body != nil {
 			resp.Body.Close()
