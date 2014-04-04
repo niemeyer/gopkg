@@ -123,8 +123,6 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	goget := req.FormValue("go-get") == "1"
-
 	m := patternNew.FindStringSubmatch(req.URL.Path)
 	compat := false
 	if m == nil {
@@ -202,7 +200,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	}
 
 	resp.Header().Set("Content-Type", "text/html")
-	if goget {
+	if req.FormValue("go-get") == "1" {
 		// execute simple template when this is a go-get request
 		err = tmplProxy.Execute(resp, repo)
 		if err != nil {
