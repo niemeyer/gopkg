@@ -107,7 +107,7 @@ const tmplStrPackage = `<!DOCTYPE html>
 				</div>
 				<div class="row" >
 					<div class="col-sm-12" >
-						<a class="btn btn-lg btn-info" href="{{.Repo.HubRoot}}{{if .Repo.Versions}}/tree/{{.FullVersion.String}}{{.Repo.Path}}{{end}}" ><i class="fa fa-github"></i> Source Code</a>
+						<a class="btn btn-lg btn-info" href="{{.Repo.HubRoot}}/tree/{{if .Repo.Versions}}{{.FullVersion.String}}{{else}}master{{end}}{{.Repo.Path}}" ><i class="fa fa-github"></i> Source Code</a>
 						<a class="btn btn-lg btn-info" href="http://godoc.org/{{.Repo.PkgPath}}" ><i class="fa fa-info-circle"></i> API Documentation</a>
 					</div>
 				</div>
