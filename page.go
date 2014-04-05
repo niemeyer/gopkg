@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 )
 
 const packageTemplateString = `<!DOCTYPE html>
@@ -128,7 +129,7 @@ const packageTemplateString = `<!DOCTYPE html>
 							<div>
 								<p>To import this package, add the following line to your code:</p>
 								<pre>import "{{.Repo.GopkgPath}}"</pre>
-								{{if .CleanPackageName}}<p>Refer to it as <i>{{.Repo.PackageName}}</i>.{{end}}
+								{{if .CleanPackageName}}<p>Refer to it as <i>{{.CleanPackageName}}</i>.{{end}}
 							</div>
 							<div>
 								<p>For more details, see the API documentation.</p>
@@ -195,7 +196,7 @@ type packageData struct {
 	Repo             *Repo
 	LatestVersions   VersionList // Contains only the latest version for each major
 	FullVersion      Version     // Version that the major requested resolves to
-	CleanPackageName bool
+	CleanPackageName string
 }
 
 func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) {
@@ -216,14 +217,22 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 	}
 	sort.Sort(sort.Reverse(data.LatestVersions))
 
-	data.CleanPackageName = true
-	for i, c := range repo.PackageName {
-		if c < 'a' || c > 'z' {
-			if i == 0 || c != '_' && (c < '0' || c > '9') {
-				data.CleanPackageName = false
-				break
-			}
+	data.CleanPackageName = repo.PackageName
+	if strings.HasPrefix(data.CleanPackageName, "go-") {
+		data.CleanPackageName = data.CleanPackageName[3:]
+	}
+	if strings.HasSuffix(data.CleanPackageName, "-go") {
+		data.CleanPackageName = data.CleanPackageName[:len(data.CleanPackageName)-3]
+	}
+	for i, c := range data.CleanPackageName {
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' {
+			continue
 		}
+		if i > 0 && (c == '_' || c >= '0' && c <= '9') {
+			continue
+		}
+		data.CleanPackageName = ""
+		break
 	}
 
 	err := packageTemplate.Execute(resp, data)
