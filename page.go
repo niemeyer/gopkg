@@ -218,7 +218,7 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 	sort.Sort(sort.Reverse(data.LatestVersions))
 
 	data.CleanPackageName = repo.PackageName
-	if strings.HasPrefix(data.CleanPackageName, "go-") {
+	if strings.HasPrefix(data.CleanPackageName, "go-") || strings.HasPrefix(data.CleanPackageName, "go.") {
 		data.CleanPackageName = data.CleanPackageName[3:]
 	}
 	if strings.HasSuffix(data.CleanPackageName, "-go") {
