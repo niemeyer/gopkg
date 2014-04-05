@@ -129,8 +129,6 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	log.Printf("%s requested %s", req.RemoteAddr, req.URL)
 
 	if req.URL.Path == "/" {
-		// resp.Header().Set("Location", "http://labix.org/gopkg.in")
-		// resp.WriteHeader(http.StatusTemporaryRedirect)
 		resp.Header().Set("Content-Type", "text/html")
 		io.WriteString(resp, indexHTML)
 		return
