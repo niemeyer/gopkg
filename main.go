@@ -288,8 +288,12 @@ func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
 		}
 
 		if strings.HasPrefix(name, "refs/heads/v") || strings.HasPrefix(name, "refs/tags/v") {
+			if strings.HasSuffix(name, "^{}") {
+				// Annotated tag is peeled off and overrides the same version just parsed.
+				name = name[:len(name)-3]
+			}
 			v, ok := parseVersion(name[strings.IndexByte(name, 'v'):])
-			if ok && repo.MajorVersion.Contains(v) && (!vrefv.IsValid() || vrefv.Less(v)) {
+			if ok && repo.MajorVersion.Contains(v) && (v == vrefv || !vrefv.IsValid() || vrefv.Less(v)) {
 				vrefv = v
 				vrefi = hashi
 				vrefj = hashj
