@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -132,6 +134,7 @@ const packageTemplateString = `<!DOCTYPE html>
 								{{if .CleanPackageName}}<p>Refer to it as <i>{{.CleanPackageName}}</i>.{{end}}
 							</div>
 							<div>
+								{{if .Synopsis}}<p>{{.Synopsis}}</p>{{end}}
 								<p>For more details, see the API documentation.</p>
 							</div>
 						</div>
@@ -197,12 +200,22 @@ type packageData struct {
 	LatestVersions   VersionList // Contains only the latest version for each major
 	FullVersion      Version     // Version that the major requested resolves to
 	CleanPackageName string
+	Synopsis         string
+}
+
+type gddoApiSynopsisResult struct {
+	Results []struct {
+		Path     string `json:"path"`
+		Synopsis string `json:"synopsis"`
+	} `json:"results"`
 }
 
 func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) {
 	data := &packageData{
 		Repo: repo,
 	}
+
+	// calculate version mapping
 	latestVersionsMap := make(map[int]Version)
 	for _, v := range repo.AllVersions {
 		v2, exists := latestVersionsMap[v.Major]
@@ -217,6 +230,7 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 	}
 	sort.Sort(sort.Reverse(data.LatestVersions))
 
+	// find clean package name
 	data.CleanPackageName = repo.PackageName
 	if strings.HasPrefix(data.CleanPackageName, "go-") {
 		data.CleanPackageName = data.CleanPackageName[3:]
@@ -235,7 +249,23 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 		break
 	}
 
-	err := packageTemplate.Execute(resp, data)
+	// retrieve synopsis
+	gddoResp, err := http.Get(`http://api.godoc.org/search?q=` + url.QueryEscape(repo.GopkgPath()))
+	if err == nil {
+		synopsisResult := &gddoApiSynopsisResult{}
+		err = json.NewDecoder(gddoResp.Body).Decode(&synopsisResult)
+		gddoResp.Body.Close()
+		if err == nil {
+			for _, apiPkg := range synopsisResult.Results {
+				if apiPkg.Path == repo.GopkgPath() {
+					data.Synopsis = apiPkg.Synopsis
+					break
+				}
+			}
+		}
+	}
+
+	err = packageTemplate.Execute(resp, data)
 	if err != nil {
 		log.Printf("error executing tmplPackage: %s\n", err)
 	}
