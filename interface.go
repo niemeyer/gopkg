@@ -130,6 +130,9 @@ const packageTemplateString = `<!DOCTYPE html>
 								<pre>import "{{.Repo.GopkgPath}}"</pre>
 								{{if .CleanPackageName}}<p>Refer to it as <i>{{.Repo.PackageName}}</i>.{{end}}
 							</div>
+							<div>
+								<p>For more details, see the API documentation.</p>
+							</div>
 						</div>
 					</div>
 					<div class="col-sm-3 col-sm-offset-1 versions" >
