@@ -56,58 +56,68 @@ func run() error {
 	return <-ch
 }
 
-var tmplProxy = template.Must(template.New("").Parse(`
+var gogetTemplate = template.Must(template.New("").Parse(`
 <html>
 <head>
-<meta name="go-import" content="{{.PkgRoot}} git {{.GitRoot}}">
+<meta name="go-import" content="{{.GopkgRoot}} git https://{{.GopkgRoot}}">
 </head>
 <body>
-<script>
-window.location = "http://godoc.org/{{.PkgPath}}" + window.location.hash;
-</script>
+go get {{.GopkgPath}}
 </body>
 </html>
 `))
 
 type Repo struct {
-	User       string // username or organization, includes forward slash
-	Pkg        string // repository name
-	VersionStr string // version string ("v1")
-	Path       string // path inside repository
-	Compat     bool   // when true, use old format
-
-	Version  Version     // requested version (major only)
-	Versions VersionList // available versions
+	User         string
+	PackageName  string
+	SubPath      string
+	OldFormat    bool
+	MajorVersion Version
+	AllVersions  VersionList
 }
 
-func (repo *Repo) GitRoot() string {
-	return "https://" + repo.PkgRoot()
-}
-
-func (repo *Repo) HubRoot() string {
-	if len(repo.User) == 0 {
-		return "https://github.com/go-" + repo.Pkg + "/" + repo.Pkg
+// GitHubRoot returns the repository root at GitHub, without a schema.
+func (repo *Repo) GitHubRoot() string {
+	if repo.User == "" {
+		return "github.com/go-" + repo.PackageName + "/" + repo.PackageName
+	} else {
+		return "github.com/" + repo.User + "/" + repo.PackageName
 	}
-	return "https://github.com/" + repo.User + repo.Pkg
 }
 
-func (repo *Repo) PkgBase() string {
-	return "gopkg.in/" + repo.User + repo.Pkg
+// GopkgRoot returns the package root at gopkg.in, without a schema.
+func (repo *Repo) GopkgRoot() string {
+	return repo.GopkgVersionRoot(repo.MajorVersion)
 }
 
-func (repo *Repo) PkgRoot() string {
-	if repo.Compat {
-		return "gopkg.in/" + repo.User + repo.VersionStr + "/" + repo.Pkg
+// GopkgRoot returns the package path at gopkg.in, without a schema.
+func (repo *Repo) GopkgPath() string {
+	return repo.GopkgVersionRoot(repo.MajorVersion) + repo.SubPath
+}
+
+// GopkgVerisonRoot returns the package root in gopkg.in for the
+// provided version, without a schema.
+func (repo *Repo) GopkgVersionRoot(version Version) string {
+	version.Minor = -1
+	version.Patch = -1
+	v := version.String()
+	if repo.OldFormat {
+		if repo.User == "" {
+			return "gopkg.in/" + v + "/" + repo.PackageName
+		} else {
+			return "gopkg.in/" + repo.User + "/" + v + "/" + repo.PackageName
+		}
+	} else {
+		if repo.User == "" {
+			return "gopkg.in/" + repo.PackageName + "." + v
+		} else {
+			return "gopkg.in/" + repo.User + "/" + repo.PackageName + "." + v
+		}
 	}
-	return repo.PkgBase() + "." + repo.VersionStr
 }
 
-func (repo *Repo) PkgPath() string {
-	return repo.PkgRoot() + repo.Path
-}
-
-var patternOld = regexp.MustCompile(`^/([a-z0-9][-a-z0-9]+/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
-var patternNew = regexp.MustCompile(`^/([a-z0-9][-a-z0-9]+/)?([a-zA-Z][-a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
+var patternOld = regexp.MustCompile(`^/(?:([a-z0-9][-a-z0-9]+)/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
+var patternNew = regexp.MustCompile(`^/(?:([a-z0-9][-a-z0-9]+)/)?([a-zA-Z][-a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
 
 func handler(resp http.ResponseWriter, req *http.Request) {
 	if req.URL.Path == "/health-check" {
@@ -124,7 +134,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	}
 
 	m := patternNew.FindStringSubmatch(req.URL.Path)
-	compat := false
+	oldFormat := false
 	if m == nil {
 		m = patternOld.FindStringSubmatch(req.URL.Path)
 		if m == nil {
@@ -132,7 +142,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 			return
 		}
 		m[2], m[3] = m[3], m[2]
-		compat = true
+		oldFormat = true
 	}
 
 	if strings.Contains(m[3], ".") {
@@ -142,15 +152,14 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	}
 
 	repo := &Repo{
-		User:       m[1],
-		Pkg:        m[2],
-		VersionStr: m[3],
-		Path:       m[4],
-		Compat:     compat,
+		User:        m[1],
+		PackageName: m[2],
+		SubPath:     m[4],
+		OldFormat:   oldFormat,
 	}
 
 	var ok bool
-	repo.Version, ok = parseVersion(repo.VersionStr)
+	repo.MajorVersion, ok = parseVersion(m[3])
 	if !ok {
 		sendNotFound(resp, "Version %q improperly considered invalid; please warn the service maintainers.", m[3])
 		return
@@ -158,22 +167,16 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 
 	var err error
 	var refs []byte
-	refs, repo.Versions, err = hackedRefs(repo)
+	refs, repo.AllVersions, err = hackedRefs(repo)
 	switch err {
 	case nil:
 		// all ok
 	case ErrNoRepo:
-		sendNotFound(resp, "GitHub repository not found at %s", repo.HubRoot())
+		sendNotFound(resp, "GitHub repository not found at https://%s", repo.GitHubRoot())
 		return
 	case ErrNoVersion:
-		v := repo.Version.String()
-		if repo.Version.Minor == -1 {
-			sendNotFound(resp, `GitHub repository at %s has no branch or tag "%s", "%s.N" or "%s.N.M"`, repo.HubRoot(), v, v, v)
-		} else if repo.Version.Patch == -1 {
-			sendNotFound(resp, `GitHub repository at %s has no branch or tag "%s" or "%s.N"`, repo.HubRoot(), v, v)
-		} else {
-			sendNotFound(resp, `GitHub repository at %s has no branch or tag "%s"`, repo.HubRoot(), v)
-		}
+		v := repo.MajorVersion.String()
+		sendNotFound(resp, `GitHub repository at https://%s has no branch or tag "%s", "%s.N" or "%s.N.M"`, repo.GitHubRoot(), v, v, v)
 		return
 	default:
 		resp.WriteHeader(http.StatusBadGateway)
@@ -181,13 +184,13 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if m[4] == "/git-upload-pack" {
-		resp.Header().Set("Location", repo.HubRoot()+"/git-upload-pack")
+	if repo.SubPath == "/git-upload-pack" {
+		resp.Header().Set("Location", "https://"+repo.GitHubRoot()+"/git-upload-pack")
 		resp.WriteHeader(http.StatusMovedPermanently)
 		return
 	}
 
-	if m[4] == "/info/refs" {
+	if repo.SubPath == "/info/refs" {
 		resp.Header().Set("Content-Type", "application/x-git-upload-pack-advertisement")
 		resp.Write(refs)
 		return
@@ -196,14 +199,14 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	resp.Header().Set("Content-Type", "text/html")
 	if req.FormValue("go-get") == "1" {
 		// execute simple template when this is a go-get request
-		err = tmplProxy.Execute(resp, repo)
+		err = gogetTemplate.Execute(resp, repo)
 		if err != nil {
-			log.Printf("error executing tmplProxy: %s\n", err)
+			log.Printf("error executing go get template: %s\n", err)
 		}
 		return
 	}
 
-	renderInterface(resp, req, repo)
+	renderPackagePage(resp, req, repo)
 }
 
 func sendNotFound(resp http.ResponseWriter, msg string, args ...interface{}) {
@@ -222,7 +225,7 @@ var ErrNoRepo = errors.New("repository not found in github")
 var ErrNoVersion = errors.New("version reference not found in github")
 
 func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
-	resp, err := http.Get(repo.HubRoot() + refsSuffix)
+	resp, err := http.Get("https://" + repo.GitHubRoot() + refsSuffix)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot talk to GitHub: %v", err)
 	}
@@ -286,7 +289,7 @@ func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
 
 		if strings.HasPrefix(name, "refs/heads/v") || strings.HasPrefix(name, "refs/tags/v") {
 			v, ok := parseVersion(name[strings.IndexByte(name, 'v'):])
-			if ok && repo.Version.Contains(v) && (!vrefv.IsValid() || vrefv.Less(v)) {
+			if ok && repo.MajorVersion.Contains(v) && (!vrefv.IsValid() || vrefv.Less(v)) {
 				vrefv = v
 				vrefi = hashi
 				vrefj = hashj
@@ -298,7 +301,7 @@ func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
 	}
 
 	// If there were absolutely no versions, and v0 was requested, accept the master as-is.
-	if len(versions) == 0 && repo.Version == (Version{0, -1, -1}) {
+	if len(versions) == 0 && repo.MajorVersion == (Version{0, -1, -1}) {
 		return data, nil, nil
 	}
 

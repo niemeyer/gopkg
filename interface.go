@@ -9,11 +9,11 @@ import (
 	"sort"
 )
 
-const tmplStrPackage = `<!DOCTYPE html>
+const packageTemplateString = `<!DOCTYPE html>
 <html >
 	<head>
 		<meta charset="utf-8">
-		<title>{{.Repo.Pkg}}.{{.Repo.Version}}{{.Repo.Path}} - {{.Repo.PkgPath}}</title>
+		<title>{{.Repo.PackageName}}.{{.Repo.MajorVersion}}{{.Repo.SubPath}} - {{.Repo.GopkgPath}}</title>
 		<link href='//fonts.googleapis.com/css?family=Ubuntu+Mono|Ubuntu' rel='stylesheet' >
 		<link href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css" rel="stylesheet" >
 		<link href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css" rel="stylesheet" >
@@ -96,19 +96,25 @@ const tmplStrPackage = `<!DOCTYPE html>
 		</style>
 	</head>
 	<body>
+		<script type="text/javascript">
+			// If there's a URL fragment, assume it's an attempt to read a specific documentation entry. 
+			if (window.location.hash.length > 1) {
+				window.location = "http://godoc.org/{{.Repo.GopkgPath}}" + window.location.hash;
+			}
+		</script>
 		<div id="wrap" >
 			<div class="container" >
 				<div class="row" >
 					<div class="col-sm-12" >
 						<div class="page-header">
-							<h1>{{.Repo.PkgPath}}</h1>
+							<h1>{{.Repo.GopkgPath}}</h1>
 						</div>
 					</div>
 				</div>
 				<div class="row" >
 					<div class="col-sm-12" >
-						<a class="btn btn-lg btn-info" href="{{.Repo.HubRoot}}/tree/{{if .Repo.Versions}}{{.FullVersion.String}}{{else}}master{{end}}{{.Repo.Path}}" ><i class="fa fa-github"></i> Source Code</a>
-						<a class="btn btn-lg btn-info" href="http://godoc.org/{{.Repo.PkgPath}}" ><i class="fa fa-info-circle"></i> API Documentation</a>
+						<a class="btn btn-lg btn-info" href="https://{{.Repo.GitHubRoot}}/tree/{{if .Repo.AllVersions}}{{.FullVersion}}{{else}}master{{end}}{{.Repo.SubPath}}" ><i class="fa fa-github"></i> Source Code</a>
+						<a class="btn btn-lg btn-info" href="http://godoc.org/{{.Repo.GopkgPath}}" ><i class="fa fa-info-circle"></i> API Documentation</a>
 					</div>
 				</div>
 				<div class="row main" >
@@ -117,11 +123,12 @@ const tmplStrPackage = `<!DOCTYPE html>
 							<h2>Getting started</h2>
 							<div>
 								<p>To get the package, execute:</p>
-								<pre>go get {{.Repo.PkgPath}}</pre>
+								<pre>go get {{.Repo.GopkgPath}}</pre>
 							</div>
 							<div>
 								<p>To import this package, add the following line to your code:</p>
-								<pre>import "{{.Repo.PkgPath}}"</pre>
+								<pre>import "{{.Repo.GopkgPath}}"</pre>
+								{{if .CleanPackageName}}<p>Refer to it as <i>{{.Repo.PackageName}}</i>.{{end}}
 							</div>
 						</div>
 					</div>
@@ -130,14 +137,14 @@ const tmplStrPackage = `<!DOCTYPE html>
 						{{ if .LatestVersions }}
 							{{ range .LatestVersions }}
 								<div>
-									<a href='//{{$.Repo.PkgBase}}.v{{.Major}}' {{if eq .Major $.Repo.Version.Major}}class="current"{{end}} >v{{.Major}}</a>
+									<a href="//{{gopkgVersionRoot $.Repo .}}{{$.Repo.SubPath}}" {{if eq .Major $.Repo.MajorVersion.Major}}class="current"{{end}} >v{{.Major}}</a>
 									&rarr;
-									<span class="label label-default">{{.String}}</span>
+									<span class="label label-default">{{.}}</span>
 								</div>
 							{{ end }}
 						{{ else }}
 							<div>
-								<a href='//{{$.Repo.PkgBase}}.v0' {{if eq 0 $.Repo.Version.Major}}class="current"{{end}} >v0</a>
+								<a href="//{{$.Repo.GopkgPath}}" class="current">v0</a>
 								&rarr;
 								<span class="label label-default">master</span>
 							</div>
@@ -162,42 +169,61 @@ const tmplStrPackage = `<!DOCTYPE html>
 	</body>
 </html>`
 
-var tmplPackage *template.Template
+var packageTemplate *template.Template
+
+func gopkgVersionRoot(repo *Repo, version Version) string {
+	return repo.GopkgVersionRoot(version)
+}
+
+var packageFuncs = template.FuncMap{
+	"gopkgVersionRoot": gopkgVersionRoot,
+}
 
 func init() {
 	var err error
-	tmplPackage, err = template.New("page").Parse(tmplStrPackage)
+	packageTemplate, err = template.New("page").Funcs(packageFuncs).Parse(packageTemplateString)
 	if err != nil {
-		fmt.Printf("fatal: parsing template failed: %s\n", err)
+		fmt.Fprintf(os.Stderr, "fatal: parsing package template failed: %s\n", err)
 		os.Exit(1)
 	}
 }
 
-type dataPackage struct {
-	Repo           *Repo
-	LatestVersions VersionList // Contains only the latest version for each major
-	FullVersion    Version     // Version that the major requested resolves to
+type packageData struct {
+	Repo             *Repo
+	LatestVersions   VersionList // Contains only the latest version for each major
+	FullVersion      Version     // Version that the major requested resolves to
+	CleanPackageName bool
 }
 
-func renderInterface(resp http.ResponseWriter, req *http.Request, repo *Repo) {
-	data := &dataPackage{
+func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) {
+	data := &packageData{
 		Repo: repo,
 	}
 	latestVersionsMap := make(map[int]Version)
-	for _, v := range repo.Versions {
+	for _, v := range repo.AllVersions {
 		v2, exists := latestVersionsMap[v.Major]
 		if !exists || v2.Less(v) {
 			latestVersionsMap[v.Major] = v
 		}
 	}
-	data.FullVersion = latestVersionsMap[repo.Version.Major]
+	data.FullVersion = latestVersionsMap[repo.MajorVersion.Major]
 	data.LatestVersions = make(VersionList, 0, len(latestVersionsMap))
 	for _, v := range latestVersionsMap {
 		data.LatestVersions = append(data.LatestVersions, v)
 	}
 	sort.Sort(sort.Reverse(data.LatestVersions))
 
-	err := tmplPackage.Execute(resp, data)
+	data.CleanPackageName = true
+	for i, c := range repo.PackageName {
+		if c < 'a' || c > 'z' {
+			if i == 0 || c != '_' && (c < '0' || c > '9') {
+				data.CleanPackageName = false
+				break
+			}
+		}
+	}
+
+	err := packageTemplate.Execute(resp, data)
 	if err != nil {
 		log.Printf("error executing tmplPackage: %s\n", err)
 	}
