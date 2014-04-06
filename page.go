@@ -14,7 +14,7 @@ const packageTemplateString = `<!DOCTYPE html>
 <html >
 	<head>
 		<meta charset="utf-8">
-		<title>{{.Repo.PackageName}}.{{.Repo.MajorVersion}}{{.Repo.SubPath}} - {{.Repo.GopkgPath}}</title>
+		<title>{{.Repo.Name}}.{{.Repo.MajorVersion}}{{.Repo.SubPath}} - {{.Repo.GopkgPath}}</title>
 		<link href='//fonts.googleapis.com/css?family=Ubuntu+Mono|Ubuntu' rel='stylesheet' >
 		<link href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css" rel="stylesheet" >
 		<link href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css" rel="stylesheet" >
@@ -129,7 +129,7 @@ const packageTemplateString = `<!DOCTYPE html>
 							<div>
 								<p>To import this package, add the following line to your code:</p>
 								<pre>import "{{.Repo.GopkgPath}}"</pre>
-								{{if .CleanPackageName}}<p>Refer to it as <i>{{.CleanPackageName}}</i>.{{end}}
+								{{if .CleanName}}<p>Refer to it as <i>{{.CleanName}}</i>.{{end}}
 							</div>
 							<div>
 								<p>For more details, see the API documentation.</p>
@@ -193,10 +193,10 @@ func init() {
 }
 
 type packageData struct {
-	Repo             *Repo
-	LatestVersions   VersionList // Contains only the latest version for each major
-	FullVersion      Version     // Version that the major requested resolves to
-	CleanPackageName string
+	Repo           *Repo
+	LatestVersions VersionList // Contains only the latest version for each major
+	FullVersion    Version     // Version that the major requested resolves to
+	CleanName      string
 }
 
 func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) {
@@ -217,21 +217,21 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 	}
 	sort.Sort(sort.Reverse(data.LatestVersions))
 
-	data.CleanPackageName = repo.PackageName
-	if strings.HasPrefix(data.CleanPackageName, "go-") || strings.HasPrefix(data.CleanPackageName, "go.") {
-		data.CleanPackageName = data.CleanPackageName[3:]
+	data.CleanName = repo.Name
+	if strings.HasPrefix(data.CleanName, "go-") || strings.HasPrefix(data.CleanName, "go.") {
+		data.CleanName = data.CleanName[3:]
 	}
-	if strings.HasSuffix(data.CleanPackageName, "-go") {
-		data.CleanPackageName = data.CleanPackageName[:len(data.CleanPackageName)-3]
+	if strings.HasSuffix(data.CleanName, "-go") {
+		data.CleanName = data.CleanName[:len(data.CleanName)-3]
 	}
-	for i, c := range data.CleanPackageName {
+	for i, c := range data.CleanName {
 		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' {
 			continue
 		}
 		if i > 0 && (c == '_' || c >= '0' && c <= '9') {
 			continue
 		}
-		data.CleanPackageName = ""
+		data.CleanName = ""
 		break
 	}
 

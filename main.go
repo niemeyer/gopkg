@@ -69,7 +69,7 @@ go get {{.GopkgPath}}
 
 type Repo struct {
 	User         string
-	PackageName  string
+	Name         string
 	SubPath      string
 	OldFormat    bool
 	MajorVersion Version
@@ -79,9 +79,9 @@ type Repo struct {
 // GitHubRoot returns the repository root at GitHub, without a schema.
 func (repo *Repo) GitHubRoot() string {
 	if repo.User == "" {
-		return "github.com/go-" + repo.PackageName + "/" + repo.PackageName
+		return "github.com/go-" + repo.Name + "/" + repo.Name
 	} else {
-		return "github.com/" + repo.User + "/" + repo.PackageName
+		return "github.com/" + repo.User + "/" + repo.Name
 	}
 }
 
@@ -103,15 +103,15 @@ func (repo *Repo) GopkgVersionRoot(version Version) string {
 	v := version.String()
 	if repo.OldFormat {
 		if repo.User == "" {
-			return "gopkg.in/" + v + "/" + repo.PackageName
+			return "gopkg.in/" + v + "/" + repo.Name
 		} else {
-			return "gopkg.in/" + repo.User + "/" + v + "/" + repo.PackageName
+			return "gopkg.in/" + repo.User + "/" + v + "/" + repo.Name
 		}
 	} else {
 		if repo.User == "" {
-			return "gopkg.in/" + repo.PackageName + "." + v
+			return "gopkg.in/" + repo.Name + "." + v
 		} else {
-			return "gopkg.in/" + repo.User + "/" + repo.PackageName + "." + v
+			return "gopkg.in/" + repo.User + "/" + repo.Name + "." + v
 		}
 	}
 }
@@ -152,10 +152,10 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	}
 
 	repo := &Repo{
-		User:        m[1],
-		PackageName: m[2],
-		SubPath:     m[4],
-		OldFormat:   oldFormat,
+		User:      m[1],
+		Name:      m[2],
+		SubPath:   m[4],
+		OldFormat: oldFormat,
 	}
 
 	var ok bool
