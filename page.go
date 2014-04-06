@@ -209,7 +209,8 @@ type packageData struct {
 	Synopsis         string
 }
 
-type gddoApiSynopsisResult struct {
+// SearchResults is used with the GDDO (godoc.org) search API
+type SearchResults struct {
 	Results []struct {
 		Path     string `json:"path"`
 		Synopsis string `json:"synopsis"`
@@ -258,14 +259,14 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 	// retrieve synopsis
 	str := `http://api.godoc.org/search?q=` + url.QueryEscape(repo.GopkgPath())
 	fmt.Println(str)
-	gddoResp, err := http.Get(str)
+	searchResp, err := http.Get(str)
 	if err == nil {
-		synopsisResult := &gddoApiSynopsisResult{}
-		err = json.NewDecoder(gddoResp.Body).Decode(&synopsisResult)
-		gddoResp.Body.Close()
+		searchResults := &SearchResults{}
+		err = json.NewDecoder(searchResp.Body).Decode(&searchResults)
+		searchResp.Body.Close()
 		if err == nil {
 			gopkgPath := repo.GopkgPath()
-			for _, apiPkg := range synopsisResult.Results {
+			for _, apiPkg := range searchResults.Results {
 				if apiPkg.Path == gopkgPath {
 					data.Synopsis = apiPkg.Synopsis
 					break
