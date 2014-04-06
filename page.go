@@ -277,6 +277,6 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 
 	err = packageTemplate.Execute(resp, data)
 	if err != nil {
-		log.Printf("error executing tmplPackage: %s\n", err)
+		log.Printf("error executing package page template: %v", err)
 	}
 }
