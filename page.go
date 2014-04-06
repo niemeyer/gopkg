@@ -3,11 +3,12 @@ package main
 import (
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"sort"
-	"strings"
 )
 
 const packageTemplateString = `<!DOCTYPE html>
@@ -129,7 +130,7 @@ const packageTemplateString = `<!DOCTYPE html>
 							<div>
 								<p>To import this package, add the following line to your code:</p>
 								<pre>import "{{.Repo.GopkgPath}}"</pre>
-								{{if .CleanName}}<p>Refer to it as <i>{{.CleanName}}</i>.{{end}}
+								{{if .PackageName}}<p>Refer to it as <i>{{.PackageName}}</i>.{{end}}
 							</div>
 							<div>
 								<p>For more details, see the API documentation.</p>
@@ -196,8 +197,10 @@ type packageData struct {
 	Repo           *Repo
 	LatestVersions VersionList // Contains only the latest version for each major
 	FullVersion    Version     // Version that the major requested resolves to
-	CleanName      string
+	PackageName    string      // Actual package identifier as specified in http://golang.org/ref/spec#PackageClause
 }
+
+var regexpPackageName = regexp.MustCompile(`\<h2 id="pkg-overview"\>package ([\p{L}_][\pL\p{Nd}_]*)\</h2\>`)
 
 func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) {
 	data := &packageData{
@@ -217,25 +220,19 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 	}
 	sort.Sort(sort.Reverse(data.LatestVersions))
 
-	data.CleanName = repo.Name
-	if strings.HasPrefix(data.CleanName, "go-") || strings.HasPrefix(data.CleanName, "go.") {
-		data.CleanName = data.CleanName[3:]
-	}
-	if strings.HasSuffix(data.CleanName, "-go") {
-		data.CleanName = data.CleanName[:len(data.CleanName)-3]
-	}
-	for i, c := range data.CleanName {
-		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' {
-			continue
+	godocResp, err := http.Get("http://godoc.org/" + repo.GopkgPath())
+	if err == nil {
+		godocRespBytes, err := ioutil.ReadAll(godocResp.Body)
+		godocResp.Body.Close()
+		if err == nil {
+			matches := regexpPackageName.FindSubmatch(godocRespBytes)
+			if len(matches) == 2 {
+				data.PackageName = string(matches[1])
+			}
 		}
-		if i > 0 && (c == '_' || c >= '0' && c <= '9') {
-			continue
-		}
-		data.CleanName = ""
-		break
 	}
 
-	err := packageTemplate.Execute(resp, data)
+	err = packageTemplate.Execute(resp, data)
 	if err != nil {
 		log.Printf("error executing tmplPackage: %s\n", err)
 	}
