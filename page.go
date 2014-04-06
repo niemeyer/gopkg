@@ -44,11 +44,17 @@ const packageTemplateString = `<!DOCTYPE html>
 				padding-top: 20px;
 			}
 
+			.buttons a {
+				width: 100%;
+				text-align: left;
+				margin-bottom: 5px;
+			}
+
 			.getting-started div {
 				padding-top: 12px;
 			}
 
-			.getting-started p {
+			.getting-started p, .synopsis p {
 				font-size: 1.3em;
 			}
 
@@ -115,7 +121,10 @@ const packageTemplateString = `<!DOCTYPE html>
 					</div>
 				</div>
 				<div class="row" >
-					<div class="col-sm-12" >
+					<div class="col-sm-8 synopsis" >
+						{{if .Synopsis}}<p>{{.Synopsis}}</p>{{end}}
+					</div>
+					<div class="col-sm-3 col-sm-offset-1 buttons" >
 						<a class="btn btn-lg btn-info" href="https://{{.Repo.GitHubRoot}}/tree/{{if .Repo.AllVersions}}{{.FullVersion}}{{else}}master{{end}}{{.Repo.SubPath}}" ><i class="fa fa-github"></i> Source Code</a>
 						<a class="btn btn-lg btn-info" href="http://godoc.org/{{.Repo.GopkgPath}}" ><i class="fa fa-info-circle"></i> API Documentation</a>
 					</div>
@@ -134,7 +143,6 @@ const packageTemplateString = `<!DOCTYPE html>
 								{{if .CleanPackageName}}<p>Refer to it as <i>{{.CleanPackageName}}</i>.{{end}}
 							</div>
 							<div>
-								{{if .Synopsis}}<p>{{.Synopsis}}</p>{{end}}
 								<p>For more details, see the API documentation.</p>
 							</div>
 						</div>
@@ -250,7 +258,9 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 	}
 
 	// retrieve synopsis
-	gddoResp, err := http.Get(`http://api.godoc.org/search?q=` + url.QueryEscape(repo.GopkgPath()))
+	str := `http://api.godoc.org/search?q=` + url.QueryEscape(repo.GopkgPath())
+	fmt.Println(str)
+	gddoResp, err := http.Get(str)
 	if err == nil {
 		synopsisResult := &gddoApiSynopsisResult{}
 		err = json.NewDecoder(gddoResp.Body).Decode(&synopsisResult)
