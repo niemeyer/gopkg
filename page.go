@@ -266,9 +266,9 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 		searchResp.Body.Close()
 		if err == nil {
 			gopkgPath := repo.GopkgPath()
-			for _, apiPkg := range searchResults.Results {
-				if apiPkg.Path == gopkgPath {
-					data.Synopsis = apiPkg.Synopsis
+			for _, result := range searchResults.Results {
+				if result.Path == gopkgPath {
+					data.Synopsis = result.Synopsis
 					break
 				}
 			}
