@@ -264,8 +264,9 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 		err = json.NewDecoder(gddoResp.Body).Decode(&synopsisResult)
 		gddoResp.Body.Close()
 		if err == nil {
+			gopkgPath := repo.GopkgPath()
 			for _, apiPkg := range synopsisResult.Results {
-				if apiPkg.Path == repo.GopkgPath() {
+				if apiPkg.Path == gopkgPath {
 					data.Synopsis = apiPkg.Synopsis
 					break
 				}
