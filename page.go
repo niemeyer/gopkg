@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -42,11 +44,17 @@ const packageTemplateString = `<!DOCTYPE html>
 				padding-top: 20px;
 			}
 
+			.buttons a {
+				width: 100%;
+				text-align: left;
+				margin-bottom: 5px;
+			}
+
 			.getting-started div {
 				padding-top: 12px;
 			}
 
-			.getting-started p {
+			.getting-started p, .synopsis p {
 				font-size: 1.3em;
 			}
 
@@ -109,6 +117,7 @@ const packageTemplateString = `<!DOCTYPE html>
 					<div class="col-sm-12" >
 						<div class="page-header">
 							<h1>{{.Repo.GopkgPath}}</h1>
+							{{.Synopsis}}
 						</div>
 					</div>
 				</div>
@@ -197,12 +206,23 @@ type packageData struct {
 	LatestVersions   VersionList // Contains only the latest version for each major
 	FullVersion      Version     // Version that the major requested resolves to
 	CleanPackageName string
+	Synopsis         string
+}
+
+// SearchResults is used with the GDDO (godoc.org) search API
+type SearchResults struct {
+	Results []struct {
+		Path     string `json:"path"`
+		Synopsis string `json:"synopsis"`
+	} `json:"results"`
 }
 
 func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) {
 	data := &packageData{
 		Repo: repo,
 	}
+
+	// calculate version mapping
 	latestVersionsMap := make(map[int]Version)
 	for _, v := range repo.AllVersions {
 		v2, exists := latestVersionsMap[v.Major]
@@ -217,6 +237,7 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 	}
 	sort.Sort(sort.Reverse(data.LatestVersions))
 
+	// find clean package name
 	data.CleanPackageName = repo.PackageName
 	if strings.HasPrefix(data.CleanPackageName, "go-") {
 		data.CleanPackageName = data.CleanPackageName[3:]
@@ -235,8 +256,27 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 		break
 	}
 
-	err := packageTemplate.Execute(resp, data)
+	// retrieve synopsis
+	str := `http://api.godoc.org/search?q=` + url.QueryEscape(repo.GopkgPath())
+	fmt.Println(str)
+	searchResp, err := http.Get(str)
+	if err == nil {
+		searchResults := &SearchResults{}
+		err = json.NewDecoder(searchResp.Body).Decode(&searchResults)
+		searchResp.Body.Close()
+		if err == nil {
+			gopkgPath := repo.GopkgPath()
+			for _, result := range searchResults.Results {
+				if result.Path == gopkgPath {
+					data.Synopsis = result.Synopsis
+					break
+				}
+			}
+		}
+	}
+
+	err = packageTemplate.Execute(resp, data)
 	if err != nil {
-		log.Printf("error executing tmplPackage: %s\n", err)
+		log.Printf("error executing package page template: %v", err)
 	}
 }
