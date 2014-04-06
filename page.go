@@ -117,14 +117,12 @@ const packageTemplateString = `<!DOCTYPE html>
 					<div class="col-sm-12" >
 						<div class="page-header">
 							<h1>{{.Repo.GopkgPath}}</h1>
+							{{.Synopsis}}
 						</div>
 					</div>
 				</div>
 				<div class="row" >
-					<div class="col-sm-8 synopsis" >
-						{{if .Synopsis}}<p>{{.Synopsis}}</p>{{end}}
-					</div>
-					<div class="col-sm-3 col-sm-offset-1 buttons" >
+					<div class="col-sm-12" >
 						<a class="btn btn-lg btn-info" href="https://{{.Repo.GitHubRoot}}/tree/{{if .Repo.AllVersions}}{{.FullVersion}}{{else}}master{{end}}{{.Repo.SubPath}}" ><i class="fa fa-github"></i> Source Code</a>
 						<a class="btn btn-lg btn-info" href="http://godoc.org/{{.Repo.GopkgPath}}" ><i class="fa fa-info-circle"></i> API Documentation</a>
 					</div>
