@@ -69,7 +69,7 @@ go get {{.GopkgPath}}
 
 type Repo struct {
 	User         string
-	PackageName  string
+	Name         string
 	SubPath      string
 	OldFormat    bool
 	MajorVersion Version
@@ -79,9 +79,9 @@ type Repo struct {
 // GitHubRoot returns the repository root at GitHub, without a schema.
 func (repo *Repo) GitHubRoot() string {
 	if repo.User == "" {
-		return "github.com/go-" + repo.PackageName + "/" + repo.PackageName
+		return "github.com/go-" + repo.Name + "/" + repo.Name
 	} else {
-		return "github.com/" + repo.User + "/" + repo.PackageName
+		return "github.com/" + repo.User + "/" + repo.Name
 	}
 }
 
@@ -103,21 +103,21 @@ func (repo *Repo) GopkgVersionRoot(version Version) string {
 	v := version.String()
 	if repo.OldFormat {
 		if repo.User == "" {
-			return "gopkg.in/" + v + "/" + repo.PackageName
+			return "gopkg.in/" + v + "/" + repo.Name
 		} else {
-			return "gopkg.in/" + repo.User + "/" + v + "/" + repo.PackageName
+			return "gopkg.in/" + repo.User + "/" + v + "/" + repo.Name
 		}
 	} else {
 		if repo.User == "" {
-			return "gopkg.in/" + repo.PackageName + "." + v
+			return "gopkg.in/" + repo.Name + "." + v
 		} else {
-			return "gopkg.in/" + repo.User + "/" + repo.PackageName + "." + v
+			return "gopkg.in/" + repo.User + "/" + repo.Name + "." + v
 		}
 	}
 }
 
 var patternOld = regexp.MustCompile(`^/(?:([a-z0-9][-a-z0-9]+)/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
-var patternNew = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?([a-zA-Z][-a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
+var patternNew = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?([a-zA-Z][-.a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
 
 func handler(resp http.ResponseWriter, req *http.Request) {
 	if req.URL.Path == "/health-check" {
@@ -152,10 +152,10 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	}
 
 	repo := &Repo{
-		User:        m[1],
-		PackageName: m[2],
-		SubPath:     m[4],
-		OldFormat:   oldFormat,
+		User:      m[1],
+		Name:      m[2],
+		SubPath:   m[4],
+		OldFormat: oldFormat,
 	}
 
 	var ok bool

@@ -4,19 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
-	"strings"
 )
 
 const packageTemplateString = `<!DOCTYPE html>
 <html >
 	<head>
 		<meta charset="utf-8">
-		<title>{{.Repo.PackageName}}.{{.Repo.MajorVersion}}{{.Repo.SubPath}} - {{.Repo.GopkgPath}}</title>
+		<title>{{.Repo.Name}}.{{.Repo.MajorVersion}}{{.Repo.SubPath}} - {{.Repo.GopkgPath}}</title>
 		<link href='//fonts.googleapis.com/css?family=Ubuntu+Mono|Ubuntu' rel='stylesheet' >
 		<link href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css" rel="stylesheet" >
 		<link href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css" rel="stylesheet" >
@@ -138,7 +139,7 @@ const packageTemplateString = `<!DOCTYPE html>
 							<div>
 								<p>To import this package, add the following line to your code:</p>
 								<pre>import "{{.Repo.GopkgPath}}"</pre>
-								{{if .CleanPackageName}}<p>Refer to it as <i>{{.CleanPackageName}}</i>.{{end}}
+								{{if .PackageName}}<p>Refer to it as <i>{{.PackageName}}</i>.{{end}}
 							</div>
 							<div>
 								<p>For more details, see the API documentation.</p>
@@ -202,11 +203,11 @@ func init() {
 }
 
 type packageData struct {
-	Repo             *Repo
-	LatestVersions   VersionList // Contains only the latest version for each major
-	FullVersion      Version     // Version that the major requested resolves to
-	CleanPackageName string
-	Synopsis         string
+	Repo           *Repo
+	LatestVersions VersionList // Contains only the latest version for each major
+	FullVersion    Version     // Version that the major requested resolves to
+	PackageName    string      // Actual package identifier as specified in http://golang.org/ref/spec#PackageClause
+	Synopsis       string
 }
 
 // SearchResults is used with the godoc.org search API
@@ -216,6 +217,8 @@ type SearchResults struct {
 		Synopsis string `json:"synopsis"`
 	} `json:"results"`
 }
+
+var regexpPackageName = regexp.MustCompile(`<h2 id="pkg-overview">package ([\p{L}_][\p{L}\p{Nd}_]*)</h2>`)
 
 func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) {
 	data := &packageData{
@@ -237,23 +240,16 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 	}
 	sort.Sort(sort.Reverse(data.LatestVersions))
 
-	// find clean package name
-	data.CleanPackageName = repo.PackageName
-	if strings.HasPrefix(data.CleanPackageName, "go-") {
-		data.CleanPackageName = data.CleanPackageName[3:]
-	}
-	if strings.HasSuffix(data.CleanPackageName, "-go") {
-		data.CleanPackageName = data.CleanPackageName[:len(data.CleanPackageName)-3]
-	}
-	for i, c := range data.CleanPackageName {
-		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' {
-			continue
+	godocResp, err := http.Get("http://godoc.org/" + repo.GopkgPath())
+	if err == nil {
+		godocRespBytes, err := ioutil.ReadAll(godocResp.Body)
+		godocResp.Body.Close()
+		if err == nil {
+			matches := regexpPackageName.FindSubmatch(godocRespBytes)
+			if len(matches) == 2 {
+				data.PackageName = string(matches[1])
+			}
 		}
-		if i > 0 && (c == '_' || c >= '0' && c <= '9') {
-			continue
-		}
-		data.CleanPackageName = ""
-		break
 	}
 
 	// retrieve synopsis
