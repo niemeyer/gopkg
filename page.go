@@ -11,6 +11,8 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"sync"
+	"time"
 )
 
 const packageTemplateString = `<!DOCTYPE html>
@@ -240,36 +242,66 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 	}
 	sort.Sort(sort.Reverse(data.LatestVersions))
 
-	godocResp, err := http.Get("http://godoc.org/" + repo.GopkgPath())
-	if err == nil {
-		godocRespBytes, err := ioutil.ReadAll(godocResp.Body)
-		godocResp.Body.Close()
-		if err == nil {
-			matches := regexpPackageName.FindSubmatch(godocRespBytes)
-			if len(matches) == 2 {
-				data.PackageName = string(matches[1])
-			}
-		}
-	}
+	var dataMutex sync.Mutex
+	wantResps := 2
+	gotResp := make(chan bool, wantResps)
 
-	// retrieve synopsis
-	searchResp, err := http.Get("http://api.godoc.org/search?q=" + url.QueryEscape(repo.GopkgPath()))
-	if err == nil {
-		searchResults := &SearchResults{}
-		err = json.NewDecoder(searchResp.Body).Decode(&searchResults)
-		searchResp.Body.Close()
+	go func() {
+		// Retrieve package name from godoc.org. This should be on a proper API.
+		godocResp, err := http.Get("http://godoc.org/" + repo.GopkgPath())
 		if err == nil {
-			gopkgPath := repo.GopkgPath()
-			for _, result := range searchResults.Results {
-				if result.Path == gopkgPath {
-					data.Synopsis = result.Synopsis
-					break
+			godocRespBytes, err := ioutil.ReadAll(godocResp.Body)
+			godocResp.Body.Close()
+			if err == nil {
+				matches := regexpPackageName.FindSubmatch(godocRespBytes)
+				if matches != nil {
+					dataMutex.Lock()
+					data.PackageName = string(matches[1])
+					dataMutex.Unlock()
 				}
 			}
 		}
+		gotResp <- true
+	}()
+
+	go func() {
+		// Retrieve synopsis from godoc.org. This should be on a package path API
+		// rather than a search.
+		searchResp, err := http.Get("http://api.godoc.org/search?q=" + url.QueryEscape(repo.GopkgPath()))
+		if err == nil {
+			searchResults := &SearchResults{}
+			err = json.NewDecoder(searchResp.Body).Decode(&searchResults)
+			searchResp.Body.Close()
+			if err == nil {
+				gopkgPath := repo.GopkgPath()
+				for _, result := range searchResults.Results {
+					if result.Path == gopkgPath {
+						dataMutex.Lock()
+						data.Synopsis = result.Synopsis
+						dataMutex.Unlock()
+						break
+					}
+				}
+			}
+		}
+		gotResp <- true
+	}()
+
+
+	r := 0
+	for r < wantResps {
+		select {
+		case <-gotResp:
+			r++
+		case <-time.After(3 * time.Second):
+			r = wantResps
+		}
 	}
 
-	err = packageTemplate.Execute(resp, data)
+	dataMutex.Lock()
+	defer dataMutex.Unlock()
+
+	err := packageTemplate.Execute(resp, data)
 	if err != nil {
 		log.Printf("error executing package page template: %v", err)
 	}
