@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
+	"time"
 )
 
 var httpFlag = flag.String("http", ":8080", "Serve HTTP at given address")
@@ -28,9 +29,9 @@ func main() {
 
 func run() error {
 	flag.Parse()
-	if len(flag.Args()) > 0 {
-		return fmt.Errorf("too many arguments: %s", flag.Args()[0])
-	}
+	//if len(flag.Args()) > 0 {
+	//	return fmt.Errorf("too many arguments: %s", flag.Args()[0])
+	//}
 
 	http.HandleFunc("/", handler)
 
@@ -217,7 +218,7 @@ func sendNotFound(resp http.ResponseWriter, msg string, args ...interface{}) {
 	resp.Write([]byte(msg))
 }
 
-// TODO Timeouts for these http interactions. Use the new support coming in 1.3.
+var httpClient = &http.Client{Timeout: 10 * time.Second}
 
 const refsSuffix = ".git/info/refs?service=git-upload-pack"
 
@@ -225,13 +226,15 @@ var ErrNoRepo = errors.New("repository not found in github")
 var ErrNoVersion = errors.New("version reference not found in github")
 
 func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
-	resp, err := http.Get("https://" + repo.GitHubRoot() + refsSuffix)
+	resp, err := httpClient.Get("https://" + repo.GitHubRoot() + refsSuffix)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot talk to GitHub: %v", err)
 	}
+	defer resp.Body.Close()
+
 	switch resp.StatusCode {
 	case 200:
-		defer resp.Body.Close()
+		// ok
 	case 401, 404:
 		return nil, nil, ErrNoRepo
 	default:
