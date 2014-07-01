@@ -15,11 +15,12 @@ import (
 	"time"
 )
 
-var domainFlag = flag.String("domain", "gopkg.in", "The domain in which this app is used")
 var httpFlag = flag.String("http", ":8080", "Serve HTTP at given address")
 var httpsFlag = flag.String("https", "", "Serve HTTPS at given address")
 var certFlag = flag.String("cert", "", "Use the provided TLS certificate")
 var keyFlag = flag.String("key", "", "Use the provided TLS key")
+var domainFlag = flag.String("domain", "gopkg.in", "Domain name")
+var githubFlag = flag.String("github", "", "Github username")
 
 func main() {
 	if err := run(); err != nil {
@@ -80,6 +81,9 @@ type Repo struct {
 
 // GitHubRoot returns the repository root at GitHub, without a schema.
 func (repo *Repo) GitHubRoot() string {
+	if *githubFlag != "" {
+		return "github.com/" + *githubFlag + "/" + repo.Name
+	}
 	if repo.User == "" {
 		return "github.com/go-" + repo.Name + "/" + repo.Name
 	} else {
