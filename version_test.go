@@ -106,3 +106,8 @@ func (s *VersionSuite) TestContains(c *C) {
 		}
 	}
 }
+
+func (s *VersionSuite) TestIsValid(c *C) {
+	c.Assert(InvalidVersion.IsValid(), Equals, false)
+	c.Assert(Version{0, 0, 0}.IsValid(), Equals, true)
+}

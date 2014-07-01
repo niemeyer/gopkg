@@ -42,7 +42,7 @@ func (v Version) Contains(other Version) bool {
 }
 
 func (v Version) IsValid() bool {
-	return v == InvalidVersion
+	return v != InvalidVersion
 }
 
 var InvalidVersion = Version{-1, -1, -1}
