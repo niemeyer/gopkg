@@ -15,6 +15,7 @@ import (
 	"time"
 )
 
+var domainFlag = flag.String("domain", "gopkg.in", "The domain in which this app is used")
 var httpFlag = flag.String("http", ":8080", "Serve HTTP at given address")
 var httpsFlag = flag.String("https", "", "Serve HTTPS at given address")
 var certFlag = flag.String("cert", "", "Use the provided TLS certificate")
@@ -104,15 +105,15 @@ func (repo *Repo) GopkgVersionRoot(version Version) string {
 	v := version.String()
 	if repo.OldFormat {
 		if repo.User == "" {
-			return "gopkg.in/" + v + "/" + repo.Name
+			return *domainFlag + "/" + v + "/" + repo.Name
 		} else {
-			return "gopkg.in/" + repo.User + "/" + v + "/" + repo.Name
+			return *domainFlag + "/" + repo.User + "/" + v + "/" + repo.Name
 		}
 	} else {
 		if repo.User == "" {
-			return "gopkg.in/" + repo.Name + "." + v
+			return *domainFlag + "/" + repo.Name + "." + v
 		} else {
-			return "gopkg.in/" + repo.User + "/" + repo.Name + "." + v
+			return *domainFlag + "/" + repo.User + "/" + repo.Name + "." + v
 		}
 	}
 }
