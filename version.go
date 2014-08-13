@@ -51,11 +51,11 @@ func parseVersion(s string) (Version, bool) {
 	if len(s) < 2 {
 		return InvalidVersion, false
 	}
-	if s[0] != 'v' {
-		return InvalidVersion, false
+	i := 0
+	if s[i] == 'v' {
+		i++
 	}
 	v := Version{-1, -1, -1}
-	i := 1
 	v.Major, i = parseVersionPart(s, i)
 	if i < 0 {
 		return InvalidVersion, false
