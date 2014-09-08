@@ -290,12 +290,16 @@ func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
 			mrefj = hashj
 		}
 
-		if strings.HasPrefix(name, "refs/heads/v") || strings.HasPrefix(name, "refs/tags/v") {
+		if strings.HasPrefix(name, "refs/heads/") || strings.HasPrefix(name, "refs/tags/") {
 			if strings.HasSuffix(name, "^{}") {
 				// Annotated tag is peeled off and overrides the same version just parsed.
 				name = name[:len(name)-3]
 			}
-			v, ok := parseVersion(name[strings.IndexByte(name, 'v'):])
+			// Remove the "refs/" prefix so we can just match on the first /
+			name = name[5:]
+			// Now remove */ too (either "heads/" or "tags/")
+			name = name[strings.IndexByte(name, '/')+1:]
+			v, ok := parseVersion(name)
 			if ok && repo.MajorVersion.Contains(v) && (v == vrefv || !vrefv.IsValid() || vrefv.Less(v)) {
 				vrefv = v
 				vrefi = hashi
