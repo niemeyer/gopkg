@@ -4,6 +4,8 @@ import (
 	"fmt"
 )
 
+// Version is a semantic version number (SemVer).
+// An element that is not present is represented as -1.
 type Version struct {
 	Major, Minor, Patch int
 }
@@ -21,6 +23,7 @@ func (v Version) String() string {
 	return fmt.Sprintf("v%d.%d.%d", v.Major, v.Minor, v.Patch)
 }
 
+// Less returns true if v is less than other.
 func (v Version) Less(other Version) bool {
 	if v.Major != other.Major {
 		return v.Major < other.Major
@@ -31,6 +34,7 @@ func (v Version) Less(other Version) bool {
 	return v.Patch < other.Patch
 }
 
+// Contains returns true if other >= v yet below the next major version.
 func (v Version) Contains(other Version) bool {
 	if v.Patch != -1 {
 		return v == other
@@ -41,10 +45,12 @@ func (v Version) Contains(other Version) bool {
 	return v.Major == other.Major
 }
 
+// IsValid tests if a version is valid.
 func (v Version) IsValid() bool {
 	return v != InvalidVersion
 }
 
+// InvalidVersion represents a version that can't be parsed.
 var InvalidVersion = Version{-1, -1, -1}
 
 func parseVersion(s string) (Version, bool) {

@@ -29,9 +29,6 @@ func main() {
 
 func run() error {
 	flag.Parse()
-	//if len(flag.Args()) > 0 {
-	//	return fmt.Errorf("too many arguments: %s", flag.Args()[0])
-	//}
 
 	http.HandleFunc("/", handler)
 
@@ -68,11 +65,12 @@ go get {{.GopkgPath}}
 </html>
 `))
 
+// Repo represents a source code repository on GitHub.
 type Repo struct {
 	User         string
 	Name         string
 	SubPath      string
-	OldFormat    bool
+	OldFormat    bool // The old /v2/pkg format.
 	MajorVersion Version
 	AllVersions  VersionList
 }
@@ -91,12 +89,12 @@ func (repo *Repo) GopkgRoot() string {
 	return repo.GopkgVersionRoot(repo.MajorVersion)
 }
 
-// GopkgRoot returns the package path at gopkg.in, without a schema.
+// GopkgPath returns the package path at gopkg.in, without a schema.
 func (repo *Repo) GopkgPath() string {
 	return repo.GopkgVersionRoot(repo.MajorVersion) + repo.SubPath
 }
 
-// GopkgVerisonRoot returns the package root in gopkg.in for the
+// GopkgVersionRoot returns the package root in gopkg.in for the
 // provided version, without a schema.
 func (repo *Repo) GopkgVersionRoot(version Version) string {
 	version.Minor = -1
@@ -222,8 +220,8 @@ var httpClient = &http.Client{Timeout: 10 * time.Second}
 
 const refsSuffix = ".git/info/refs?service=git-upload-pack"
 
-var ErrNoRepo = errors.New("repository not found in github")
-var ErrNoVersion = errors.New("version reference not found in github")
+var ErrNoRepo = errors.New("repository not found in GitHub")
+var ErrNoVersion = errors.New("version reference not found in GitHub")
 
 func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
 	resp, err := httpClient.Get("https://" + repo.GitHubRoot() + refsSuffix)
