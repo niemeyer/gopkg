@@ -1,8 +1,9 @@
 package main
 
 import (
-	. "launchpad.net/gocheck"
 	"testing"
+
+	. "gopkg.in/check.v1"
 )
 
 func Test(t *testing.T) { TestingT(t) }
