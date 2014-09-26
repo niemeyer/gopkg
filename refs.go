@@ -1,12 +1,12 @@
 package gopkg
 
-import(
-	"net/http"
+import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"strings"
+	"net/http"
 	"strconv"
+	"strings"
 )
 
 const refsSuffix = ".git/info/refs?service=git-upload-pack"
