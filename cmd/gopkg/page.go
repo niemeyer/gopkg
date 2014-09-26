@@ -189,7 +189,7 @@ const packageTemplateString = `<!DOCTYPE html>
 
 var packageTemplate *template.Template
 
-func gopkgVersionRoot(repo *Repo, version gopkg.Version) string {
+func gopkgVersionRoot(repo *gopkg.Repo, version gopkg.Version) string {
 	return repo.GopkgVersionRoot(version)
 }
 
@@ -207,10 +207,10 @@ func init() {
 }
 
 type packageData struct {
-	Repo           *Repo
+	Repo           *gopkg.Repo
 	LatestVersions gopkg.VersionList // Contains only the latest version for each major
 	FullVersion    gopkg.Version     // Version that the major requested resolves to
-	PackageName    string      // Actual package identifier as specified in http://golang.org/ref/spec#PackageClause
+	PackageName    string            // Actual package identifier as specified in http://golang.org/ref/spec#PackageClause
 	Synopsis       string
 }
 
@@ -224,7 +224,7 @@ type SearchResults struct {
 
 var regexpPackageName = regexp.MustCompile(`<h2 id="pkg-overview">package ([\p{L}_][\p{L}\p{Nd}_]*)</h2>`)
 
-func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) {
+func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *gopkg.Repo) {
 	data := &packageData{
 		Repo: repo,
 	}
@@ -288,7 +288,6 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 		}
 		gotResp <- true
 	}()
-
 
 	r := 0
 	for r < wantResps {
