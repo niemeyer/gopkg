@@ -12,10 +12,10 @@ import (
 var gogetTemplate = template.Must(template.New("").Parse(`
 <html>
 <head>
-<meta name="go-import" content="gopkg.in{{.Root}} git https://gopkg.in{{.Root}}">
+<meta name="go-import" content="{{.Host}}{{.Repo.Root}} git https://{{.Host}}{{.Repo.Root}}">
 </head>
 <body>
-go get gopkg.in{{.Path}}
+go get {{.Host}}{{.Repo.Path}}
 </body>
 </html>
 `))
@@ -97,13 +97,16 @@ func (h *Handler) Handle(resp http.ResponseWriter, req *http.Request) (repo *Rep
 	resp.Header().Set("Content-Type", "text/html")
 	if req.FormValue("go-get") == "1" {
 		// execute simple template when this is a go-get request
-		err = gogetTemplate.Execute(resp, repo)
+		err = gogetTemplate.Execute(resp, map[string]interface{}{
+			"Repo": repo,
+			"Host": req.URL.Host,
+		})
 		if err != nil {
 			log.Printf("error executing go get template: %s\n", err)
 		}
 		return repo, true
 	}
-	return nil, false
+	return repo, false
 }
 
 func sendNotFound(resp http.ResponseWriter, msg string, args ...interface{}) {
