@@ -10,7 +10,17 @@ type Repo struct {
 	AllVersions  VersionList
 }
 
-// GitHubRoot returns the repository root at GitHub, without a schema.
+// GitHubRoot returns the repository root at GitHub, without a schema. If the
+// repo.User == "" and repo.Name == "example" then the returned string will be:
+//
+//  github.com/go-example/example
+//
+// If the user string is not empty then the returned string will be a
+// combination, for example repo.User == "bob" and repo.Name == "example", the
+// returned string will be:
+//
+//  github.com/bob/example
+//
 func (repo *Repo) GitHubRoot() string {
 	if repo.User == "" {
 		return "github.com/go-" + repo.Name + "/" + repo.Name
