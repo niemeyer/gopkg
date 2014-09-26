@@ -56,10 +56,10 @@ func run() error {
 var gogetTemplate = template.Must(template.New("").Parse(`
 <html>
 <head>
-<meta name="go-import" content="{{.GopkgRoot}} git https://{{.GopkgRoot}}">
+<meta name="go-import" content="gopkg.in{{.Root}} git https://gopkg.in{{.Root}}">
 </head>
 <body>
-go get {{.GopkgPath}}
+go get gopkg.in{{.Path}}
 </body>
 </html>
 `))

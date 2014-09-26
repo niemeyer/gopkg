@@ -19,34 +19,33 @@ func (repo *Repo) GitHubRoot() string {
 	}
 }
 
-// GopkgRoot returns the package root at gopkg.in, without a schema.
-func (repo *Repo) GopkgRoot() string {
-	return repo.GopkgVersionRoot(repo.MajorVersion)
+// Root returns the absolute package root, without a schema.
+func (repo *Repo) Root() string {
+	return repo.VersionRoot(repo.MajorVersion)
 }
 
-// GopkgPath returns the package path at gopkg.in, without a schema.
-func (repo *Repo) GopkgPath() string {
-	return repo.GopkgVersionRoot(repo.MajorVersion) + repo.SubPath
+// Path returns the absolute package path, without a schema.
+func (repo *Repo) Path() string {
+	return repo.VersionRoot(repo.MajorVersion) + repo.SubPath
 }
 
-// GopkgVersionRoot returns the package root in gopkg.in for the
-// provided version, without a schema.
-func (repo *Repo) GopkgVersionRoot(version Version) string {
+// VersionRoot returns the absolute package root for the provided version,
+// without a schema.
+func (repo *Repo) VersionRoot(version Version) string {
 	version.Minor = -1
 	version.Patch = -1
 	v := version.String()
 	if repo.OldFormat {
 		if repo.User == "" {
-			return "gopkg.in/" + v + "/" + repo.Name
+			return "/" + v + "/" + repo.Name
 		} else {
-			return "gopkg.in/" + repo.User + "/" + v + "/" + repo.Name
+			return "/" + repo.User + "/" + v + "/" + repo.Name
 		}
 	} else {
 		if repo.User == "" {
-			return "gopkg.in/" + repo.Name + "." + v
+			return "/" + repo.Name + "." + v
 		} else {
-			return "gopkg.in/" + repo.User + "/" + repo.Name + "." + v
+			return "/" + repo.User + "/" + repo.Name + "." + v
 		}
 	}
 }
-
