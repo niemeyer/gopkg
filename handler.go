@@ -30,6 +30,19 @@ type Handler struct {
 	Client *http.Client
 }
 
+// Handle effectively asks gopkg to handle the HTTP request if it can. The
+// return parameter handled informs you of whether or not the request was
+// completely handled and a response was written.
+//
+// The returned repo contains information regarding the repository of the
+// requested package. If the request was not handled and the returned repo is
+// non-nil, then it means for example that:
+//
+//  gopkg.in/pkg.v1
+//
+// was requested by the client but the client is not the Go tool nor git, but
+// rather something else (e.g. a web browser) so you could for example respond
+// with a package page.
 func (h *Handler) Handle(resp http.ResponseWriter, req *http.Request) (repo *Repo, handled bool) {
 	m := patternNew.FindStringSubmatch(req.URL.Path)
 	oldFormat := false
