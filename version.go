@@ -10,6 +10,15 @@ type Version struct {
 	Major, Minor, Patch int
 }
 
+// String returns a string representation of this version like:
+//  v1.2.1
+//
+// If minor or patch components of this version are less than zero then a
+// simplified string is returned, for example:
+//  v1 (missing minor)
+//  v1.2 (missing revision)
+//
+// If the major version is invalid (less than zero) a panic will occur.
 func (v Version) String() string {
 	if v.Major < 0 {
 		panic(fmt.Sprintf("cannot stringify invalid version (major is %d)", v.Major))
@@ -50,6 +59,8 @@ func (v Version) Contains(other Version) bool {
 	return v.Major == other.Major
 }
 
+// IsValid is short-handed for:
+//  v != InvalidVersion
 func (v Version) IsValid() bool {
 	return v != InvalidVersion
 }
@@ -57,6 +68,8 @@ func (v Version) IsValid() bool {
 // InvalidVersion represents a version that can't be parsed.
 var InvalidVersion = Version{-1, -1, -1}
 
+// ParseVersion parses a version string prefixed with 'v'. If the version
+// string cannot be parsed then (InvalidVersion, false) is returned.
 func ParseVersion(s string) (Version, bool) {
 	if len(s) < 2 {
 		return InvalidVersion, false
