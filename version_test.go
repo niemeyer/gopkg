@@ -1,4 +1,4 @@
-package main
+package gopkg
 
 import (
 	. "launchpad.net/gocheck"

@@ -13,6 +13,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/niemeyer/gopkg"
 )
 
 const packageTemplateString = `<!DOCTYPE html>
@@ -187,7 +189,7 @@ const packageTemplateString = `<!DOCTYPE html>
 
 var packageTemplate *template.Template
 
-func gopkgVersionRoot(repo *Repo, version Version) string {
+func gopkgVersionRoot(repo *Repo, version gopkg.Version) string {
 	return repo.GopkgVersionRoot(version)
 }
 
@@ -206,8 +208,8 @@ func init() {
 
 type packageData struct {
 	Repo           *Repo
-	LatestVersions VersionList // Contains only the latest version for each major
-	FullVersion    Version     // Version that the major requested resolves to
+	LatestVersions gopkg.VersionList // Contains only the latest version for each major
+	FullVersion    gopkg.Version     // Version that the major requested resolves to
 	PackageName    string      // Actual package identifier as specified in http://golang.org/ref/spec#PackageClause
 	Synopsis       string
 }
@@ -228,7 +230,7 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 	}
 
 	// calculate version mapping
-	latestVersionsMap := make(map[int]Version)
+	latestVersionsMap := make(map[int]gopkg.Version)
 	for _, v := range repo.AllVersions {
 		v2, exists := latestVersionsMap[v.Major]
 		if !exists || v2.Less(v) {
@@ -236,7 +238,7 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 		}
 	}
 	data.FullVersion = latestVersionsMap[repo.MajorVersion.Major]
-	data.LatestVersions = make(VersionList, 0, len(latestVersionsMap))
+	data.LatestVersions = make(gopkg.VersionList, 0, len(latestVersionsMap))
 	for _, v := range latestVersionsMap {
 		data.LatestVersions = append(data.LatestVersions, v)
 	}

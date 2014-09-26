@@ -13,6 +13,8 @@ import (
 	"strings"
 	"text/template"
 	"time"
+
+	"github.com/niemeyer/gopkg"
 )
 
 var httpFlag = flag.String("http", ":8080", "Serve HTTP at given address")
@@ -73,8 +75,8 @@ type Repo struct {
 	Name         string
 	SubPath      string
 	OldFormat    bool
-	MajorVersion Version
-	AllVersions  VersionList
+	MajorVersion gopkg.Version
+	AllVersions  gopkg.VersionList
 }
 
 // GitHubRoot returns the repository root at GitHub, without a schema.
@@ -98,7 +100,7 @@ func (repo *Repo) GopkgPath() string {
 
 // GopkgVerisonRoot returns the package root in gopkg.in for the
 // provided version, without a schema.
-func (repo *Repo) GopkgVersionRoot(version Version) string {
+func (repo *Repo) GopkgVersionRoot(version gopkg.Version) string {
 	version.Minor = -1
 	version.Patch = -1
 	v := version.String()
@@ -160,7 +162,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	}
 
 	var ok bool
-	repo.MajorVersion, ok = parseVersion(m[3])
+	repo.MajorVersion, ok = gopkg.ParseVersion(m[3])
 	if !ok {
 		sendNotFound(resp, "Version %q improperly considered invalid; please warn the service maintainers.", m[3])
 		return
@@ -225,7 +227,7 @@ const refsSuffix = ".git/info/refs?service=git-upload-pack"
 var ErrNoRepo = errors.New("repository not found in github")
 var ErrNoVersion = errors.New("version reference not found in github")
 
-func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
+func hackedRefs(repo *Repo) (data []byte, versions []gopkg.Version, err error) {
 	resp, err := httpClient.Get("https://" + repo.GitHubRoot() + refsSuffix)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot talk to GitHub: %v", err)
@@ -248,9 +250,9 @@ func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
 
 	var mrefi, mrefj int
 	var vrefi, vrefj int
-	var vrefv = InvalidVersion
+	var vrefv = gopkg.InvalidVersion
 
-	versions = make([]Version, 0)
+	versions = make([]gopkg.Version, 0)
 	sdata := string(data)
 	for i, j := 0, 0; i < len(data); i = j {
 		size, err := strconv.ParseInt(sdata[i:i+4], 16, 32)
@@ -295,7 +297,7 @@ func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
 				// Annotated tag is peeled off and overrides the same version just parsed.
 				name = name[:len(name)-3]
 			}
-			v, ok := parseVersion(name[strings.IndexByte(name, 'v'):])
+			v, ok := gopkg.ParseVersion(name[strings.IndexByte(name, 'v'):])
 			if ok && repo.MajorVersion.Contains(v) && (v == vrefv || !vrefv.IsValid() || vrefv.Less(v)) {
 				vrefv = v
 				vrefi = hashi
@@ -308,7 +310,7 @@ func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
 	}
 
 	// If there were absolutely no versions, and v0 was requested, accept the master as-is.
-	if len(versions) == 0 && repo.MajorVersion == (Version{0, -1, -1}) {
+	if len(versions) == 0 && repo.MajorVersion == (gopkg.Version{0, -1, -1}) {
 		return data, nil, nil
 	}
 

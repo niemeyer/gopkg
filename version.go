@@ -1,4 +1,4 @@
-package main
+package gopkg
 
 import (
 	"fmt"
@@ -47,7 +47,7 @@ func (v Version) IsValid() bool {
 
 var InvalidVersion = Version{-1, -1, -1}
 
-func parseVersion(s string) (Version, bool) {
+func ParseVersion(s string) (Version, bool) {
 	if len(s) < 2 {
 		return InvalidVersion, false
 	}
