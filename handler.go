@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"regexp"
-	"strings"
 	"text/template"
 )
 
@@ -20,11 +18,11 @@ go get {{.Host}}{{.Repo.Path}}
 </html>
 `))
 
-var patternOld = regexp.MustCompile(`^/(?:([a-z0-9][-a-z0-9]+)/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
-var patternNew = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?([a-zA-Z][-.a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})(?:\.git)?((?:/[a-zA-Z0-9][-.a-zA-Z0-9]*)*)$`)
-
 // Handler is responsible for handling gopkg HTTP requests.
 type Handler struct {
+	// The URL matcher, if nil then DefaultMatcher is used.
+	Matcher
+
 	// The HTTP client used to make request to GitHub. If nil then
 	// http.DefaultClient will be used.
 	Client *http.Client
@@ -44,39 +42,25 @@ type Handler struct {
 // rather something else (e.g. a web browser) so you could for example respond
 // with a package page.
 func (h *Handler) Handle(resp http.ResponseWriter, req *http.Request) (repo *Repo, handled bool) {
-	m := patternNew.FindStringSubmatch(req.URL.Path)
-	oldFormat := false
-	if m == nil {
-		m = patternOld.FindStringSubmatch(req.URL.Path)
-		if m == nil {
-			// Not a valid package URL.
-			return nil, false
-		}
-		m[2], m[3] = m[3], m[2]
-		oldFormat = true
+	// If the Matcher is nil then we use DefaultMatcher.
+	matcher := h.Matcher
+	if matcher == nil {
+		matcher = DefaultMatcher
 	}
 
-	if strings.Contains(m[3], ".") {
-		sendNotFound(resp, "Import paths take the major version only (.%s instead of .%s); see docs at gopkg.in for the reasoning.",
-			m[3][:strings.Index(m[3], ".")], m[3])
-		return nil, true
-	}
-
-	repo = &Repo{
-		User:      m[1],
-		Name:      m[2],
-		SubPath:   m[4],
-		OldFormat: oldFormat,
-	}
-
-	var ok bool
-	repo.MajorVersion, ok = ParseVersion(m[3])
-	if !ok {
-		sendNotFound(resp, "Version %q improperly considered invalid; please warn the service maintainers.", m[3])
-		return nil, true
-	}
-
+	// Perform URL matching.
 	var err error
+	repo, err = matcher.Match(req.URL)
+	if err == ErrNotPackageURL {
+		// Not a valid package URL.
+		return nil, false
+	}
+	if err != nil {
+		// Some other URL matching error, send it to the client.
+		sendNotFound(resp, err.Error())
+		return nil, true
+	}
+
 	var refs []byte
 	refs, repo.AllVersions, err = HackedRefs(h.Client, repo)
 	switch err {
