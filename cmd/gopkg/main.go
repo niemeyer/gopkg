@@ -51,6 +51,7 @@ func run() error {
 }
 
 var pkgHandler = &gopkg.Handler{
+	Host: "gopkg.in",
 	Client: &http.Client{
 		Timeout: 10 * time.Second,
 	},

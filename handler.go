@@ -20,6 +20,9 @@ go get {{.Host}}{{.Repo.Path}}
 
 // Handler is responsible for handling gopkg HTTP requests.
 type Handler struct {
+	// The literal host string (e.g. "gopkg.in"). It must be present.
+	Host string
+
 	// The URL matcher, if nil then DefaultMatcher is used.
 	Matcher
 
@@ -41,7 +44,14 @@ type Handler struct {
 // was requested by the client but the client is not the Go tool nor git, but
 // rather something else (e.g. a web browser) so you could for example respond
 // with a package page.
+//
+// Handle will panic if the handler's Host string is empty.
 func (h *Handler) Handle(resp http.ResponseWriter, req *http.Request) (repo *Repo, handled bool) {
+	// The host string must be non-empty.
+	if h.Host == "" {
+		panic("Handle(): Empty Host string in Handler.")
+	}
+
 	// If the Matcher is nil then we use DefaultMatcher.
 	matcher := h.Matcher
 	if matcher == nil {
@@ -96,7 +106,7 @@ func (h *Handler) Handle(resp http.ResponseWriter, req *http.Request) (repo *Rep
 		// execute simple template when this is a go-get request
 		err = gogetTemplate.Execute(resp, map[string]interface{}{
 			"Repo": repo,
-			"Host": req.URL.Host,
+			"Host": h.Host,
 		})
 		if err != nil {
 			log.Printf("error executing go get template: %s\n", err)
