@@ -14,7 +14,7 @@ const refsSuffix = ".git/info/refs?service=git-upload-pack"
 var ErrNoRepo = errors.New("repository not found in GitHub")
 var ErrNoVersion = errors.New("version reference not found in GitHub")
 
-func HackedRefs(client *http.Client, repo *Repo) (data []byte, versions []Version, err error) {
+func hackedRefs(client *http.Client, repo *Repo) (data []byte, versions []Version, err error) {
 	resp, err := client.Get("https://" + repo.GitHubRoot() + refsSuffix)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot talk to GitHub: %v", err)

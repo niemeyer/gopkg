@@ -72,7 +72,7 @@ func (h *Handler) Handle(resp http.ResponseWriter, req *http.Request) (repo *Rep
 	}
 
 	var refs []byte
-	refs, repo.AllVersions, err = HackedRefs(h.Client, repo)
+	refs, repo.AllVersions, err = hackedRefs(h.Client, repo)
 	switch err {
 	case nil:
 		// all ok
