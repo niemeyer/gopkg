@@ -13,13 +13,15 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/niemeyer/gopkg"
 )
 
 const packageTemplateString = `<!DOCTYPE html>
 <html >
 	<head>
 		<meta charset="utf-8">
-		<title>{{.Repo.Name}}.{{.Repo.MajorVersion}}{{.Repo.SubPath}} - {{.Repo.GopkgPath}}</title>
+		<title>{{.Repo.Name}}.{{.Repo.MajorVersion}}{{.Repo.SubPath}} - {{gopkgPath $.Repo}}</title>
 		<link href='//fonts.googleapis.com/css?family=Ubuntu+Mono|Ubuntu' rel='stylesheet' >
 		<link href="//netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css" rel="stylesheet" >
 		<link href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css" rel="stylesheet" >
@@ -111,7 +113,7 @@ const packageTemplateString = `<!DOCTYPE html>
 		<script type="text/javascript">
 			// If there's a URL fragment, assume it's an attempt to read a specific documentation entry. 
 			if (window.location.hash.length > 1) {
-				window.location = "http://godoc.org/{{.Repo.GopkgPath}}" + window.location.hash;
+				window.location = "http://godoc.org/{{gopkgPath $.Repo}}" + window.location.hash;
 			}
 		</script>
 		<div id="wrap" >
@@ -119,7 +121,7 @@ const packageTemplateString = `<!DOCTYPE html>
 				<div class="row" >
 					<div class="col-sm-12" >
 						<div class="page-header">
-							<h1>{{.Repo.GopkgPath}}</h1>
+							<h1>{{gopkgPath $.Repo}}</h1>
 							{{.Synopsis}}
 						</div>
 					</div>
@@ -127,7 +129,7 @@ const packageTemplateString = `<!DOCTYPE html>
 				<div class="row" >
 					<div class="col-sm-12" >
 						<a class="btn btn-lg btn-info" href="https://{{.Repo.GitHubRoot}}/tree/{{if .Repo.AllVersions}}{{.FullVersion}}{{else}}master{{end}}{{.Repo.SubPath}}" ><i class="fa fa-github"></i> Source Code</a>
-						<a class="btn btn-lg btn-info" href="http://godoc.org/{{.Repo.GopkgPath}}" ><i class="fa fa-info-circle"></i> API Documentation</a>
+						<a class="btn btn-lg btn-info" href="http://godoc.org/{{gopkgPath $.Repo}}" ><i class="fa fa-info-circle"></i> API Documentation</a>
 					</div>
 				</div>
 				<div class="row main" >
@@ -136,11 +138,11 @@ const packageTemplateString = `<!DOCTYPE html>
 							<h2>Getting started</h2>
 							<div>
 								<p>To get the package, execute:</p>
-								<pre>go get {{.Repo.GopkgPath}}</pre>
+								<pre>go get {{gopkgPath $.Repo}}</pre>
 							</div>
 							<div>
 								<p>To import this package, add the following line to your code:</p>
-								<pre>import "{{.Repo.GopkgPath}}"</pre>
+								<pre>import "{{gopkgPath $.Repo}}"</pre>
 								{{if .PackageName}}<p>Refer to it as <i>{{.PackageName}}</i>.{{end}}
 							</div>
 							<div>
@@ -160,7 +162,7 @@ const packageTemplateString = `<!DOCTYPE html>
 							{{ end }}
 						{{ else }}
 							<div>
-								<a href="//{{$.Repo.GopkgPath}}" class="current">v0</a>
+								<a href="//{{gopkgPath $.Repo}}" class="current">v0</a>
 								&rarr;
 								<span class="label label-default">master</span>
 							</div>
@@ -187,12 +189,17 @@ const packageTemplateString = `<!DOCTYPE html>
 
 var packageTemplate *template.Template
 
-func gopkgVersionRoot(repo *Repo, version Version) string {
-	return repo.GopkgVersionRoot(version)
+func gopkgVersionRoot(repo *gopkg.Repo, version gopkg.Version) string {
+	return "gopkg.in" + repo.VersionRoot(version)
+}
+
+func gopkgPath(repo *gopkg.Repo) string {
+	return "gopkg.in" + repo.Path()
 }
 
 var packageFuncs = template.FuncMap{
 	"gopkgVersionRoot": gopkgVersionRoot,
+	"gopkgPath": gopkgPath,
 }
 
 func init() {
@@ -205,10 +212,10 @@ func init() {
 }
 
 type packageData struct {
-	Repo           *Repo
-	LatestVersions VersionList // Contains only the latest version for each major
-	FullVersion    Version     // Version that the major requested resolves to
-	PackageName    string      // Actual package identifier as specified in http://golang.org/ref/spec#PackageClause
+	Repo           *gopkg.Repo
+	LatestVersions gopkg.VersionList // Contains only the latest version for each major
+	FullVersion    gopkg.Version     // Version that the major requested resolves to
+	PackageName    string            // Actual package identifier as specified in http://golang.org/ref/spec#PackageClause
 	Synopsis       string
 }
 
@@ -222,13 +229,13 @@ type SearchResults struct {
 
 var regexpPackageName = regexp.MustCompile(`<h2 id="pkg-overview">package ([\p{L}_][\p{L}\p{Nd}_]*)</h2>`)
 
-func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) {
+func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *gopkg.Repo) {
 	data := &packageData{
 		Repo: repo,
 	}
 
 	// calculate version mapping
-	latestVersionsMap := make(map[int]Version)
+	latestVersionsMap := make(map[int]gopkg.Version)
 	for _, v := range repo.AllVersions {
 		v2, exists := latestVersionsMap[v.Major]
 		if !exists || v2.Less(v) {
@@ -236,7 +243,7 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 		}
 	}
 	data.FullVersion = latestVersionsMap[repo.MajorVersion.Major]
-	data.LatestVersions = make(VersionList, 0, len(latestVersionsMap))
+	data.LatestVersions = make(gopkg.VersionList, 0, len(latestVersionsMap))
 	for _, v := range latestVersionsMap {
 		data.LatestVersions = append(data.LatestVersions, v)
 	}
@@ -248,7 +255,7 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 
 	go func() {
 		// Retrieve package name from godoc.org. This should be on a proper API.
-		godocResp, err := http.Get("http://godoc.org/" + repo.GopkgPath())
+		godocResp, err := http.Get("http://godoc.org/" + gopkgPath(repo))
 		if err == nil {
 			godocRespBytes, err := ioutil.ReadAll(godocResp.Body)
 			godocResp.Body.Close()
@@ -267,13 +274,13 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 	go func() {
 		// Retrieve synopsis from godoc.org. This should be on a package path API
 		// rather than a search.
-		searchResp, err := http.Get("http://api.godoc.org/search?q=" + url.QueryEscape(repo.GopkgPath()))
+		searchResp, err := http.Get("http://api.godoc.org/search?q=" + url.QueryEscape(gopkgPath(repo)))
 		if err == nil {
 			searchResults := &SearchResults{}
 			err = json.NewDecoder(searchResp.Body).Decode(&searchResults)
 			searchResp.Body.Close()
 			if err == nil {
-				gopkgPath := repo.GopkgPath()
+				gopkgPath := gopkgPath(repo)
 				for _, result := range searchResults.Results {
 					if result.Path == gopkgPath {
 						dataMutex.Lock()
@@ -286,7 +293,6 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 		}
 		gotResp <- true
 	}()
-
 
 	r := 0
 	for r < wantResps {

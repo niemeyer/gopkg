@@ -1,4 +1,4 @@
-package main
+package gopkg
 
 import (
 	"testing"
@@ -42,7 +42,7 @@ var versionParseTests = []struct {
 
 func (s *VersionSuite) TestParse(c *C) {
 	for _, t := range versionParseTests {
-		got, ok := parseVersion(t.s)
+		got, ok := ParseVersion(t.s)
 		if t.major == -1 {
 			if ok || got != InvalidVersion {
 				c.Fatalf("version %q is invalid but parsed as %#v", t.s, got)
