@@ -58,6 +58,7 @@ var gogetTemplate = template.Must(template.New("").Parse(`
 <html>
 <head>
 <meta name="go-import" content="{{.GopkgRoot}} git https://{{.GopkgRoot}}">
+{{$root := .GitHubRoot}}{{$version := .FullVersion}}<meta name="go-source" content="{{.GopkgRoot}} _ https://{{$root}}/tree/{{$version}}{/dir} https://{{$root}}/blob/{{$version}}{/dir}/{file}#L{line}">
 </head>
 <body>
 go get {{.GopkgPath}}
@@ -113,6 +114,21 @@ func (repo *Repo) GopkgVersionRoot(version Version) string {
 			return "gopkg.in/" + repo.User + "/" + repo.Name + "." + v
 		}
 	}
+}
+
+// FullVersion returns the latest version as a string or "master" if no match
+// is found for the master version.
+func (repo *Repo) FullVersion() string {
+	latestVersion := InvalidVersion
+	for _, v := range repo.AllVersions {
+		if v.Major == repo.MajorVersion.Major && latestVersion.Less(v) {
+			latestVersion = v
+		}
+	}
+	if latestVersion == InvalidVersion {
+		return "master"
+	}
+	return latestVersion.String()
 }
 
 var patternOld = regexp.MustCompile(`^/(?:([a-z0-9][-a-z0-9]+)/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
