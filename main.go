@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
@@ -230,7 +231,7 @@ const refsSuffix = ".git/info/refs?service=git-upload-pack"
 var ErrNoRepo = errors.New("repository not found in GitHub")
 var ErrNoVersion = errors.New("version reference not found in GitHub")
 
-func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
+func hackedRefs(repo *Repo) (refs []byte, versions []Version, err error) {
 	resp, err := httpClient.Get("https://" + repo.GitHubRoot() + refsSuffix)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot talk to GitHub: %v", err)
@@ -246,15 +247,19 @@ func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
 		return nil, nil, fmt.Errorf("error from GitHub: %v", resp.Status)
 	}
 
-	data, err = ioutil.ReadAll(resp.Body)
+	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error reading from GitHub: %v", err)
 	}
 
-	var mrefi, mrefj int
-	var vrefi, vrefj int
+	var hlinei, hlinej int // HEAD reference line start/end
+	var mlinei, mlinej int // master reference line start/end
+	var vrefhash string
+	var vrefname string
 	var vrefv = InvalidVersion
 
+	// Record all available versions, the locations of the master and HEAD lines,
+	// and details of the best reference satisfying the requested major version.
 	versions = make([]Version, 0)
 	sdata := string(data)
 	for i, j := 0, 0; i < len(data); i = j {
@@ -290,9 +295,13 @@ func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
 
 		name := sdata[namei:namej]
 
+		if name == "HEAD" {
+			hlinei = i
+			hlinej = j
+		}
 		if name == "refs/heads/master" {
-			mrefi = hashi
-			mrefj = hashj
+			mlinei = i
+			mlinej = j
 		}
 
 		if strings.HasPrefix(name, "refs/heads/v") || strings.HasPrefix(name, "refs/tags/v") {
@@ -303,8 +312,8 @@ func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
 			v, ok := parseVersion(name[strings.IndexByte(name, 'v'):])
 			if ok && repo.MajorVersion.Contains(v) && (v == vrefv || !vrefv.IsValid() || vrefv.Less(v)) {
 				vrefv = v
-				vrefi = hashi
-				vrefj = hashj
+				vrefhash = sdata[hashi:hashj]
+				vrefname = name
 			}
 			if ok {
 				versions = append(versions, v)
@@ -317,10 +326,38 @@ func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
 		return data, nil, nil
 	}
 
-	if mrefi == 0 || vrefi == 0 {
+	// If the file has no HEAD line or the version was not found, report as unavailable.
+	if hlinei == 0 || vrefhash == "" {
 		return nil, nil, ErrNoVersion
 	}
 
-	copy(data[mrefi:mrefj], data[vrefi:vrefj])
-	return data, versions, nil
+	var buf bytes.Buffer
+	buf.Grow(len(data)+256)
+
+	// Copy the header as-is.
+	buf.Write(data[:hlinei])
+
+	// Extract the original capabilities.
+	caps := ""
+	if i := strings.Index(sdata[hlinei:hlinej], "\x00"); i > 0 {
+		caps = strings.Replace(sdata[hlinei+i+1:hlinej-1],  "symref=", "oldref=", -1)
+	}
+
+	// Insert the HEAD reference line with the right hash and a proper symref capability.
+	line := fmt.Sprintf("%s HEAD\x00symref=HEAD:%s %s\n", vrefhash, vrefname, caps)
+	fmt.Fprintf(&buf, "%04x%s", 4+len(line), line)
+
+	// Insert the master reference line.
+	line = fmt.Sprintf("%s refs/heads/master\n", vrefhash)
+	fmt.Fprintf(&buf, "%04x%s", 4+len(line), line)
+
+	// Append the rest, dropping the original master line if necessary.
+	if mlinei > 0 {
+		buf.Write(data[hlinej:mlinei])
+		buf.Write(data[mlinej:])
+	} else {
+		buf.Write(data[hlinej:])
+	}
+
+	return buf.Bytes(), versions, nil
 }
