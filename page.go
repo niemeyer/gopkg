@@ -124,6 +124,11 @@ const packageTemplateString = `<!DOCTYPE html>
 						</div>
 					</div>
 				</div>
+				{{ if .Repo.MajorVersion.Unstable }}
+					<div class="col-sm-12 alert alert-danger">
+						This is an <b><i>unstable</i></b> package and should <i>not</i> be used in released code.
+					</div>
+				{{ end }}
 				<div class="row" >
 					<div class="col-sm-12" >
 						<a class="btn btn-lg btn-info" href="https://{{.Repo.GitHubRoot}}/tree/{{if .Repo.AllVersions}}{{.FullVersion}}{{else}}master{{end}}{{.Repo.SubPath}}" ><i class="fa fa-github"></i> Source Code</a>
@@ -153,7 +158,7 @@ const packageTemplateString = `<!DOCTYPE html>
 						{{ if .LatestVersions }}
 							{{ range .LatestVersions }}
 								<div>
-									<a href="//{{gopkgVersionRoot $.Repo .}}{{$.Repo.SubPath}}" {{if eq .Major $.Repo.MajorVersion.Major}}class="current"{{end}} >v{{.Major}}</a>
+									<a href="//{{gopkgVersionRoot $.Repo .}}{{$.Repo.SubPath}}" {{if eq .Major $.Repo.MajorVersion.Major}}{{if eq .Unstable $.Repo.MajorVersion.Unstable}}class="current"{{end}}{{end}}>v{{.Major}}{{if .Unstable}}-unstable{{end}}</a>
 									&rarr;
 									<span class="label label-default">{{.}}</span>
 								</div>
@@ -227,20 +232,32 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 		Repo: repo,
 	}
 
-	// calculate version mapping
-	latestVersionsMap := make(map[int]Version)
+	// Calculate the latest version for each major version, both stable and unstable.
+	latestVersions := make(map[int]Version)
+	latestUnstable := make(map[int]Version)
 	for _, v := range repo.AllVersions {
-		v2, exists := latestVersionsMap[v.Major]
+		m := latestVersions
+		if v.Unstable {
+			m = latestUnstable
+		}
+		v2, exists := m[v.Major]
 		if !exists || v2.Less(v) {
-			latestVersionsMap[v.Major] = v
+			m[v.Major] = v
 		}
 	}
-	data.FullVersion = latestVersionsMap[repo.MajorVersion.Major]
-	data.LatestVersions = make(VersionList, 0, len(latestVersionsMap))
-	for _, v := range latestVersionsMap {
+	data.LatestVersions = make(VersionList, 0, len(latestVersions))
+	for _, v := range latestVersions {
 		data.LatestVersions = append(data.LatestVersions, v)
 	}
 	sort.Sort(sort.Reverse(data.LatestVersions))
+
+	if repo.MajorVersion.Unstable {
+		data.FullVersion = latestUnstable[repo.MajorVersion.Major]
+		// Prepend post-sorting so it's show first.
+		data.LatestVersions = append([]Version{data.FullVersion}, data.LatestVersions...)
+	} else {
+		data.FullVersion = latestVersions[repo.MajorVersion.Major]
+	}
 
 	var dataMutex sync.Mutex
 	wantResps := 2

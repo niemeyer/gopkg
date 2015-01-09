@@ -115,8 +115,8 @@ func (repo *Repo) GopkgVersionRoot(version Version) string {
 	}
 }
 
-var patternOld = regexp.MustCompile(`^/(?:([a-z0-9][-a-z0-9]+)/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
-var patternNew = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?([a-zA-Z][-.a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2})(?:\.git)?((?:/[a-zA-Z0-9][-.a-zA-Z0-9]*)*)$`)
+var patternOld = regexp.MustCompile(`^/(?:([a-z0-9][-a-z0-9]+)/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(-unstable)?)/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
+var patternNew = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?([a-zA-Z][-.a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(-unstable)?)(?:\.git)?((?:/[a-zA-Z0-9][-.a-zA-Z0-9]*)*)$`)
 
 func handler(resp http.ResponseWriter, req *http.Request) {
 	if req.URL.Path == "/health-check" {
@@ -140,6 +140,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 			sendNotFound(resp, "Unsupported URL pattern; see the documentation at gopkg.in for details.")
 			return
 		}
+		// "/v2/name" <= "/name.v2"
 		m[2], m[3] = m[3], m[2]
 		oldFormat = true
 	}
@@ -153,7 +154,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	repo := &Repo{
 		User:      m[1],
 		Name:      m[2],
-		SubPath:   m[4],
+		SubPath:   m[5],
 		OldFormat: oldFormat,
 	}
 
@@ -174,8 +175,14 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 		sendNotFound(resp, "GitHub repository not found at https://%s", repo.GitHubRoot())
 		return
 	case ErrNoVersion:
-		v := repo.MajorVersion.String()
-		sendNotFound(resp, `GitHub repository at https://%s has no branch or tag "%s", "%s.N" or "%s.N.M"`, repo.GitHubRoot(), v, v, v)
+		major := repo.MajorVersion
+		suffix := ""
+		if major.Unstable {
+			major.Unstable = false
+			suffix = unstableSuffix
+		}
+		v := major.String()
+		sendNotFound(resp, `GitHub repository at https://%s has no branch or tag "%s%s", "%s.N%s" or "%s.N.M%s"`, repo.GitHubRoot(), v, suffix, v, suffix, v, suffix)
 		return
 	default:
 		resp.WriteHeader(http.StatusBadGateway)
@@ -306,7 +313,7 @@ func hackedRefs(repo *Repo) (data []byte, versions []Version, err error) {
 	}
 
 	// If there were absolutely no versions, and v0 was requested, accept the master as-is.
-	if len(versions) == 0 && repo.MajorVersion == (Version{0, -1, -1}) {
+	if len(versions) == 0 && repo.MajorVersion == (Version{0, -1, -1, false}) {
 		return data, nil, nil
 	}
 
