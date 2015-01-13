@@ -131,7 +131,7 @@ const packageTemplateString = `<!DOCTYPE html>
 				{{ end }}
 				<div class="row" >
 					<div class="col-sm-12" >
-						<a class="btn btn-lg btn-info" href="https://{{.Repo.GitHubRoot}}/tree/{{if .Repo.AllVersions}}{{.FullVersion}}{{else}}master{{end}}{{.Repo.SubPath}}" ><i class="fa fa-github"></i> Source Code</a>
+						<a class="btn btn-lg btn-info" href="https://{{.Repo.GitHubRoot}}/tree/{{.Repo.GitHubTree}}{{.Repo.SubPath}}" ><i class="fa fa-github"></i> Source Code</a>
 						<a class="btn btn-lg btn-info" href="http://godoc.org/{{.Repo.GopkgPath}}" ><i class="fa fa-info-circle"></i> API Documentation</a>
 					</div>
 				</div>
@@ -212,9 +212,9 @@ func init() {
 type packageData struct {
 	Repo           *Repo
 	LatestVersions VersionList // Contains only the latest version for each major
-	FullVersion    Version     // Version that the major requested resolves to
 	PackageName    string      // Actual package identifier as specified in http://golang.org/ref/spec#PackageClause
 	Synopsis       string
+	GitTreeName    string
 }
 
 // SearchResults is used with the godoc.org search API
@@ -234,15 +234,13 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 
 	// Calculate the latest version for each major version, both stable and unstable.
 	latestVersions := make(map[int]Version)
-	latestUnstable := make(map[int]Version)
 	for _, v := range repo.AllVersions {
-		m := latestVersions
 		if v.Unstable {
-			m = latestUnstable
+			continue
 		}
-		v2, exists := m[v.Major]
+		v2, exists := latestVersions[v.Major]
 		if !exists || v2.Less(v) {
-			m[v.Major] = v
+			latestVersions[v.Major] = v
 		}
 	}
 	data.LatestVersions = make(VersionList, 0, len(latestVersions))
@@ -251,12 +249,9 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 	}
 	sort.Sort(sort.Reverse(data.LatestVersions))
 
-	if repo.MajorVersion.Unstable {
-		data.FullVersion = latestUnstable[repo.MajorVersion.Major]
-		// Prepend post-sorting so it's show first.
-		data.LatestVersions = append([]Version{data.FullVersion}, data.LatestVersions...)
-	} else {
-		data.FullVersion = latestVersions[repo.MajorVersion.Major]
+	if repo.FullVersion.Unstable {
+		// Prepend post-sorting so it shows first.
+		data.LatestVersions = append([]Version{repo.FullVersion}, data.LatestVersions...)
 	}
 
 	var dataMutex sync.Mutex
