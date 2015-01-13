@@ -166,9 +166,12 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var err error
-	var refs []byte
-	refs, repo.AllVersions, err = hackedRefs(repo)
+	var changed []byte
+	original, err := fetchRefs(repo)
+	if err == nil {
+		changed, repo.AllVersions, err = changeRefs(original, repo.MajorVersion)
+	}
+
 	switch err {
 	case nil:
 		// all ok
@@ -199,7 +202,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 
 	if repo.SubPath == "/info/refs" {
 		resp.Header().Set("Content-Type", "application/x-git-upload-pack-advertisement")
-		resp.Write(refs)
+		resp.Write(changed)
 		return
 	}
 
@@ -231,10 +234,10 @@ const refsSuffix = ".git/info/refs?service=git-upload-pack"
 var ErrNoRepo = errors.New("repository not found in GitHub")
 var ErrNoVersion = errors.New("version reference not found in GitHub")
 
-func hackedRefs(repo *Repo) (refs []byte, versions []Version, err error) {
+func fetchRefs(repo *Repo) (data []byte, err error) {
 	resp, err := httpClient.Get("https://" + repo.GitHubRoot() + refsSuffix)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot talk to GitHub: %v", err)
+		return nil, fmt.Errorf("cannot talk to GitHub: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -242,16 +245,19 @@ func hackedRefs(repo *Repo) (refs []byte, versions []Version, err error) {
 	case 200:
 		// ok
 	case 401, 404:
-		return nil, nil, ErrNoRepo
+		return nil, ErrNoRepo
 	default:
-		return nil, nil, fmt.Errorf("error from GitHub: %v", resp.Status)
+		return nil, fmt.Errorf("error from GitHub: %v", resp.Status)
 	}
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error reading from GitHub: %v", err)
+		return nil, fmt.Errorf("error reading from GitHub: %v", err)
 	}
+	return data, err
+}
 
+func changeRefs(data []byte, major Version) (changed []byte, versions VersionList, err error) {
 	var hlinei, hlinej int // HEAD reference line start/end
 	var mlinei, mlinej int // master reference line start/end
 	var vrefhash string
@@ -310,7 +316,7 @@ func hackedRefs(repo *Repo) (refs []byte, versions []Version, err error) {
 				name = name[:len(name)-3]
 			}
 			v, ok := parseVersion(name[strings.IndexByte(name, 'v'):])
-			if ok && repo.MajorVersion.Contains(v) && (v == vrefv || !vrefv.IsValid() || vrefv.Less(v)) {
+			if ok && major.Contains(v) && (v == vrefv || !vrefv.IsValid() || vrefv.Less(v)) {
 				vrefv = v
 				vrefhash = sdata[hashi:hashj]
 				vrefname = name
@@ -322,7 +328,7 @@ func hackedRefs(repo *Repo) (refs []byte, versions []Version, err error) {
 	}
 
 	// If there were absolutely no versions, and v0 was requested, accept the master as-is.
-	if len(versions) == 0 && repo.MajorVersion == (Version{0, -1, -1, false}) {
+	if len(versions) == 0 && major == (Version{0, -1, -1, false}) {
 		return data, nil, nil
 	}
 
@@ -344,7 +350,20 @@ func hackedRefs(repo *Repo) (refs []byte, versions []Version, err error) {
 	}
 
 	// Insert the HEAD reference line with the right hash and a proper symref capability.
-	line := fmt.Sprintf("%s HEAD\x00symref=HEAD:%s %s\n", vrefhash, vrefname, caps)
+	var line string
+	if strings.HasPrefix(vrefname, "refs/heads/") {
+		if caps == "" {
+			line = fmt.Sprintf("%s HEAD\x00symref=HEAD:%s\n", vrefhash, vrefname)
+		} else {
+			line = fmt.Sprintf("%s HEAD\x00symref=HEAD:%s %s\n", vrefhash, vrefname, caps)
+		}
+	} else {
+		if caps == "" {
+			line = fmt.Sprintf("%s HEAD\n", vrefhash)
+		} else {
+			line = fmt.Sprintf("%s HEAD\x00%s\n", vrefhash, caps)
+		}
+	}
 	fmt.Fprintf(&buf, "%04x%s", 4+len(line), line)
 
 	// Insert the master reference line.
