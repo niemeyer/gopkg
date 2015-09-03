@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -77,12 +78,12 @@ type Repo struct {
 
 	// FullVersion is the best version in AllVersions that matches MajorVersion.
 	// It defaults to InvalidVersion if there are no matches.
-	FullVersion    Version
+	FullVersion Version
 
 	// AllVersions holds all versions currently available in the repository,
 	// either coming from branch names or from tag names. Version zero (v0)
 	// is only present in the list if it really exists in the repository.
-	AllVersions    VersionList
+	AllVersions VersionList
 }
 
 // SetVersions records in the relevant fields the details about which
@@ -234,6 +235,23 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	if repo.SubPath == "/info/refs" {
 		resp.Header().Set("Content-Type", "application/x-git-upload-pack-advertisement")
 		resp.Write(changed)
+		return
+	}
+
+	if repo.SubPath == "/info/versions" {
+		versionsData := struct {
+			Latest Version
+			All    VersionList
+		}{
+			repo.FullVersion,
+			repo.AllVersions,
+		}
+		versionsBody, err := json.MarshalIndent(versionsData, "", "    ")
+		if err != nil {
+			log.Printf("error marshalling versions into json: %+v\n", versionsData)
+		}
+		resp.Header().Set("Content-Type", "application/json")
+		resp.Write(versionsBody)
 		return
 	}
 
