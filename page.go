@@ -299,7 +299,6 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 		gotResp <- true
 	}()
 
-
 	r := 0
 	for r < wantResps {
 		select {
