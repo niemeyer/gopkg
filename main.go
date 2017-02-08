@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,12 +15,26 @@ import (
 	"strings"
 	"text/template"
 	"time"
+
+	"golang.org/x/crypto/acme/autocert"
 )
 
-var httpFlag = flag.String("http", ":8080", "Serve HTTP at given address")
-var httpsFlag = flag.String("https", "", "Serve HTTPS at given address")
-var certFlag = flag.String("cert", "", "Use the provided TLS certificate")
-var keyFlag = flag.String("key", "", "Use the provided TLS key")
+var (
+	httpFlag  = flag.String("http", ":8080", "Serve HTTP at given address")
+	httpsFlag = flag.String("https", "", "Serve HTTPS at given address")
+	certFlag  = flag.String("cert", "", "Use the provided TLS certificate")
+	keyFlag   = flag.String("key", "", "Use the provided TLS key")
+	acmeFlag  = flag.String("acme", "", "Auto-request TLS certs and store in given directory")
+)
+
+var httpServer = &http.Server{
+	ReadTimeout:  20 * time.Second,
+	WriteTimeout: 20 * time.Second,
+}
+
+var httpClient = &http.Client{
+	Timeout: 10 * time.Second,
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -36,20 +51,56 @@ func run() error {
 	if *httpFlag == "" && *httpsFlag == "" {
 		return fmt.Errorf("must provide -http and/or -https")
 	}
-	if (*httpsFlag != "" || *certFlag != "" || *keyFlag != "") && (*httpsFlag == "" || *certFlag == "" || *keyFlag == "") {
+	if *acmeFlag != "" && *httpsFlag == "" {
+		return fmt.Errorf("cannot use -acme without -https")
+	}
+	if *acmeFlag != "" && (*certFlag != "" || *keyFlag != "") {
+		return fmt.Errorf("cannot provide -acme with -key or -cert")
+	}
+	if *acmeFlag == "" && (*httpsFlag != "" || *certFlag != "" || *keyFlag != "") && (*httpsFlag == "" || *certFlag == "" || *keyFlag == "") {
 		return fmt.Errorf("-https -cert and -key must be used together")
 	}
 
 	ch := make(chan error, 2)
 
+	if *acmeFlag != "" {
+		// So a potential error is seen upfront.
+		if err := os.MkdirAll(*acmeFlag, 0700); err != nil {
+			return err
+		}
+	}
+
 	if *httpFlag != "" {
+		server := *httpServer
+		server.Addr = *httpFlag
 		go func() {
-			ch <- http.ListenAndServe(*httpFlag, nil)
+			ch <- server.ListenAndServe()
 		}()
 	}
 	if *httpsFlag != "" {
+		server := *httpServer
+		server.Addr = *httpsFlag
+		if *acmeFlag != "" {
+			m := autocert.Manager{
+				Prompt:      autocert.AcceptTOS,
+				Cache:       autocert.DirCache(*acmeFlag),
+				RenewBefore: 24 * 30 * time.Hour,
+				HostPolicy: autocert.HostWhitelist(
+					"localhost",
+					"gopkg.in",
+					"p1.gopkg.in",
+					"p2.gopkg.in",
+					"p3.gopkg.in",
+					"mup.labix.org",
+				),
+				Email: "gustavo@niemeyer.net",
+			}
+			server.TLSConfig = &tls.Config{
+				GetCertificate: m.GetCertificate,
+			}
+		}
 		go func() {
-			ch <- http.ListenAndServeTLS(*httpsFlag, *certFlag, *keyFlag, nil)
+			ch <- server.ListenAndServeTLS(*certFlag, *keyFlag)
 		}()
 	}
 	return <-ch
@@ -77,12 +128,12 @@ type Repo struct {
 
 	// FullVersion is the best version in AllVersions that matches MajorVersion.
 	// It defaults to InvalidVersion if there are no matches.
-	FullVersion    Version
+	FullVersion Version
 
 	// AllVersions holds all versions currently available in the repository,
 	// either coming from branch names or from tag names. Version zero (v0)
 	// is only present in the list if it really exists in the repository.
-	AllVersions    VersionList
+	AllVersions VersionList
 }
 
 // SetVersions records in the relevant fields the details about which
@@ -144,8 +195,8 @@ func (repo *Repo) GopkgVersionRoot(version Version) string {
 	}
 }
 
-var patternOld = regexp.MustCompile(`^/(?:([a-z0-9][-a-z0-9]+)/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(-unstable)?)/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
-var patternNew = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?([a-zA-Z][-.a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(-unstable)?)(?:\.git)?((?:/[a-zA-Z0-9][-.a-zA-Z0-9]*)*)$`)
+var patternOld = regexp.MustCompile(`^/(?:([a-z0-9][-a-z0-9]+)/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
+var patternNew = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?([a-zA-Z][-.a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)(?:\.git)?((?:/[a-zA-Z0-9][-.a-zA-Z0-9]*)*)$`)
 
 func handler(resp http.ResponseWriter, req *http.Request) {
 	if req.URL.Path == "/health-check" {
@@ -183,7 +234,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	repo := &Repo{
 		User:        m[1],
 		Name:        m[2],
-		SubPath:     m[5],
+		SubPath:     m[4],
 		OldFormat:   oldFormat,
 		FullVersion: InvalidVersion,
 	}
@@ -257,8 +308,6 @@ func sendNotFound(resp http.ResponseWriter, msg string, args ...interface{}) {
 	resp.WriteHeader(http.StatusNotFound)
 	resp.Write([]byte(msg))
 }
-
-var httpClient = &http.Client{Timeout: 10 * time.Second}
 
 const refsSuffix = ".git/info/refs?service=git-upload-pack"
 
