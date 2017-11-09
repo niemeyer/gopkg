@@ -71,14 +71,14 @@ func run() error {
 	}
 
 	if *httpFlag != "" {
-		server := *httpServer
+		server := httpServer
 		server.Addr = *httpFlag
 		go func() {
 			ch <- server.ListenAndServe()
 		}()
 	}
 	if *httpsFlag != "" {
-		server := *httpServer
+		server := httpServer
 		server.Addr = *httpsFlag
 		if *acmeFlag != "" {
 			m := autocert.Manager{
@@ -120,6 +120,7 @@ go get {{.GopkgPath}}
 
 // Repo represents a source code repository on GitHub.
 type Repo struct {
+	Domain       string
 	User         string
 	Name         string
 	SubPath      string
@@ -147,13 +148,23 @@ func (repo *Repo) SetVersions(all []Version) {
 	}
 }
 
+// SwitchDomain switches repo.Domain and repo.User if the Domain is not provided in the import url,
+// defaulting to GitHub.com
+func (repo *Repo) SwitchDomain() {
+	if repo.Domain != "" && repo.User == "" {
+		repo.User = repo.Domain
+		repo.Domain = ""
+	}
+}
+
 // GitHubRoot returns the repository root at GitHub, without a schema.
 func (repo *Repo) GitHubRoot() string {
-	if repo.User == "" {
+	if repo.Domain == "" && repo.User == "" {
 		return "github.com/go-" + repo.Name + "/" + repo.Name
-	} else {
+	} else if repo.Domain == "" {
 		return "github.com/" + repo.User + "/" + repo.Name
 	}
+	return repo.Domain + "/" + repo.User + "/" + repo.Name
 }
 
 // GitHubTree returns the repository tree name at GitHub for the selected version.
@@ -183,20 +194,17 @@ func (repo *Repo) GopkgVersionRoot(version Version) string {
 	if repo.OldFormat {
 		if repo.User == "" {
 			return "gopkg.in/" + v + "/" + repo.Name
-		} else {
-			return "gopkg.in/" + repo.User + "/" + v + "/" + repo.Name
 		}
-	} else {
-		if repo.User == "" {
-			return "gopkg.in/" + repo.Name + "." + v
-		} else {
-			return "gopkg.in/" + repo.User + "/" + repo.Name + "." + v
-		}
+		return "gopkg.in/" + repo.User + "/" + v + "/" + repo.Name
 	}
+	if repo.User == "" {
+		return "gopkg.in/" + repo.Name + "." + v
+	}
+	return "gopkg.in/" + repo.User + "/" + repo.Name + "." + v
 }
 
 var patternOld = regexp.MustCompile(`^/(?:([a-z0-9][-a-z0-9]+)/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
-var patternNew = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?([a-zA-Z][-.a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)(?:\.git)?((?:/[a-zA-Z0-9][-.a-zA-Z0-9]*)*)$`)
+var patternNew = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?([a-zA-Z][-.a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)(?:\.git)?((?:/[a-zA-Z0-9][-.a-zA-Z0-9]*)*)$`)
 
 func handler(resp http.ResponseWriter, req *http.Request) {
 	if req.URL.Path == "/health-check" {
@@ -221,23 +229,26 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 			return
 		}
 		// "/v2/name" <= "/name.v2"
-		m[2], m[3] = m[3], m[2]
+		m[3], m[4] = m[4], m[3]
 		oldFormat = true
 	}
 
-	if strings.Contains(m[3], ".") {
+	if strings.Contains(m[4], ".") {
 		sendNotFound(resp, "Import paths take the major version only (.%s instead of .%s); see docs at gopkg.in for the reasoning.",
-			m[3][:strings.Index(m[3], ".")], m[3])
+			m[4][:strings.Index(m[4], ".")], m[4])
 		return
 	}
 
 	repo := &Repo{
-		User:        m[1],
-		Name:        m[2],
-		SubPath:     m[4],
+		Domain:      m[1],
+		User:        m[2],
+		Name:        m[3],
+		SubPath:     m[5],
 		OldFormat:   oldFormat,
 		FullVersion: InvalidVersion,
 	}
+
+	repo.SwitchDomain()
 
 	var ok bool
 	repo.MajorVersion, ok = parseVersion(m[3])
@@ -311,7 +322,10 @@ func sendNotFound(resp http.ResponseWriter, msg string, args ...interface{}) {
 
 const refsSuffix = ".git/info/refs?service=git-upload-pack"
 
+//ErrNoRepo variable holds an error object that signals missing repository on Github
 var ErrNoRepo = errors.New("repository not found in GitHub")
+
+//ErrNoVersion variable holds an error object that signals missing version reference on Github
 var ErrNoVersion = errors.New("version reference not found in GitHub")
 
 func fetchRefs(repo *Repo) (data []byte, err error) {
