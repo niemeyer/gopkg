@@ -71,14 +71,14 @@ func run() error {
 	}
 
 	if *httpFlag != "" {
-		server := httpServer
+		server := *httpServer
 		server.Addr = *httpFlag
 		go func() {
 			ch <- server.ListenAndServe()
 		}()
 	}
 	if *httpsFlag != "" {
-		server := httpServer
+		server := *httpServer
 		server.Addr = *httpsFlag
 		if *acmeFlag != "" {
 			m := autocert.Manager{
