@@ -251,7 +251,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	repo.SwitchDomain()
 
 	var ok bool
-	repo.MajorVersion, ok = parseVersion(m[3])
+	repo.MajorVersion, ok = parseVersion(m[4])
 	if !ok {
 		sendNotFound(resp, "Version %q improperly considered invalid; please warn the service maintainers.", m[3])
 		return
