@@ -191,20 +191,23 @@ func (repo *Repo) GopkgVersionRoot(version Version) string {
 	version.Minor = -1
 	version.Patch = -1
 	v := version.String()
+	host := "gopkg.in/"
 	if repo.OldFormat {
 		if repo.User == "" {
-			return "gopkg.in/" + v + "/" + repo.Name
+			return host + v + "/" + repo.Name
 		}
-		return "gopkg.in/" + repo.User + "/" + v + "/" + repo.Name
+		return host + repo.User + "/" + v + "/" + repo.Name
 	}
-	if repo.User == "" {
-		return "gopkg.in/" + repo.Name + "." + v
+	if repo.Domain == "" && repo.User == "" {
+		return host + repo.Name + "." + v
+	} else if repo.Domain == "" {
+		return host + "/" + repo.User + "/" + repo.Name + "." + v
 	}
-	return "gopkg.in/" + repo.User + "/" + repo.Name + "." + v
+	return host + "/" + repo.Domain + "/" + repo.User + "/" + repo.Name + "." + v
 }
 
 var patternOld = regexp.MustCompile(`^/(?:([a-z0-9][-a-z0-9]+)/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
-var patternNew = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?([a-zA-Z][-.a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)(?:\.git)?((?:/[a-zA-Z0-9][-.a-zA-Z0-9]*)*)$`)
+var patternNew = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-.a-zA-Z0-9]+)/)?(?:([a-zA-Z0-9][-.a-zA-Z0-9]+)/)?([a-zA-Z][-.a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)(?:\.git)?((?:/[a-zA-Z0-9][-.a-zA-Z0-9]*)*)$`)
 
 func handler(resp http.ResponseWriter, req *http.Request) {
 	if req.URL.Path == "/health-check" {
@@ -253,7 +256,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	var ok bool
 	repo.MajorVersion, ok = parseVersion(m[4])
 	if !ok {
-		sendNotFound(resp, "Version %q improperly considered invalid; please warn the service maintainers.", m[3])
+		sendNotFound(resp, "Version %q improperly considered invalid; please warn the service maintainers.", m[4])
 		return
 	}
 
