@@ -87,6 +87,7 @@ func run() error {
 		server.Addr = *httpsFlag
 		if *acmeFlag != "" {
 			m := autocert.Manager{
+				ForceRSA:    true,
 				Prompt:      autocert.AcceptTOS,
 				Cache:       autocert.DirCache(*acmeFlag),
 				RenewBefore: 24 * 30 * time.Hour,
