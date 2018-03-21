@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -28,12 +29,16 @@ var (
 )
 
 var httpServer = &http.Server{
-	ReadTimeout:  20 * time.Second,
-	WriteTimeout: 20 * time.Second,
+	ReadTimeout:  30 * time.Second,
+	WriteTimeout: 5 * time.Minute,
 }
 
 var httpClient = &http.Client{
 	Timeout: 10 * time.Second,
+}
+
+var bulkClient = &http.Client{
+	Timeout: 5 * time.Minute,
 }
 
 func main() {
@@ -70,7 +75,7 @@ func run() error {
 		}
 	}
 
-	if *httpFlag != "" {
+	if *httpFlag != "" && (*httpsFlag == "" || *acmeFlag == "") {
 		server := *httpServer
 		server.Addr = *httpFlag
 		go func() {
@@ -98,10 +103,14 @@ func run() error {
 			server.TLSConfig = &tls.Config{
 				GetCertificate: m.GetCertificate,
 			}
+			go func() {
+				ch <- http.ListenAndServe(":80", m.HTTPHandler(nil))
+			}()
 		}
 		go func() {
 			ch <- server.ListenAndServeTLS(*certFlag, *keyFlag)
 		}()
+
 	}
 	return <-ch
 }
@@ -277,8 +286,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	}
 
 	if repo.SubPath == "/git-upload-pack" {
-		resp.Header().Set("Location", "https://"+repo.GitHubRoot()+"/git-upload-pack")
-		resp.WriteHeader(http.StatusMovedPermanently)
+		proxyUploadPack(resp, req, repo)
 		return
 	}
 
@@ -310,6 +318,35 @@ func sendNotFound(resp http.ResponseWriter, msg string, args ...interface{}) {
 }
 
 const refsSuffix = ".git/info/refs?service=git-upload-pack"
+
+func proxyUploadPack(resp http.ResponseWriter, req *http.Request, repo *Repo) {
+	preq, err := http.NewRequest(req.Method, "https://"+repo.GitHubRoot()+"/git-upload-pack", req.Body)
+	if err != nil {
+		resp.WriteHeader(http.StatusInternalServerError)
+		resp.Write([]byte(fmt.Sprintf("Cannot create GitHub request: %v", err)))
+		return
+	}
+	preq.Header = req.Header
+	presp, err := bulkClient.Do(preq)
+	if err != nil {
+		resp.WriteHeader(http.StatusBadGateway)
+		resp.Write([]byte(fmt.Sprintf("Cannot obtain data pack from GitHub: %v", err)))
+		return
+	}
+	defer presp.Body.Close()
+
+	header := resp.Header()
+	for key, values := range presp.Header {
+		header[key] = values
+	}
+	resp.WriteHeader(presp.StatusCode)
+
+	// Ignore errors. Dropped connections are usual and will make this fail.
+	_, err = io.Copy(resp, presp.Body)
+	if err != nil {
+		log.Printf("Error copying data from GitHub: %v", err)
+	}
+}
 
 var ErrNoRepo = errors.New("repository not found in GitHub")
 var ErrNoVersion = errors.New("version reference not found in GitHub")
