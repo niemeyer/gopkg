@@ -157,6 +157,16 @@ func (repo *Repo) SetVersions(all []Version) {
 	}
 }
 
+type repoBase struct {
+	user string
+	name string
+}
+
+var redirect = map[repoBase]repoBase{
+	// https://github.com/go-fsnotify/fsnotify/issues/1
+	{"", "fsnotify"}: {"fsnotify", "fsnotify"},
+}
+
 // GitHubRoot returns the repository root at GitHub, without a schema.
 func (repo *Repo) GitHubRoot() string {
 	if repo.User == "" {
@@ -247,6 +257,10 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 		SubPath:     m[4],
 		OldFormat:   oldFormat,
 		FullVersion: InvalidVersion,
+	}
+
+	if r, ok := redirect[repoBase{repo.User, repo.Name}]; ok {
+		repo.User, repo.Name = r.user, r.name
 	}
 
 	var ok bool
