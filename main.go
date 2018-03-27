@@ -119,8 +119,8 @@ func run() error {
 var gogetTemplate = template.Must(template.New("").Parse(`
 <html>
 <head>
-<meta name="go-import" content="{{.GopkgRoot}} git https://{{.GopkgRoot}}">
-{{$root := .GitHubRoot}}{{$tree := .GitHubTree}}<meta name="go-source" content="{{.GopkgRoot}} _ https://{{$root}}/tree/{{$tree}}{/dir} https://{{$root}}/blob/{{$tree}}{/dir}/{file}#L{line}">
+<meta name="go-import" content="{{.Original.GopkgRoot}} git https://{{.Original.GopkgRoot}}">
+{{$root := .GitHubRoot}}{{$tree := .GitHubTree}}<meta name="go-source" content="{{.Original.GopkgRoot}} _ https://{{$root}}/tree/{{$tree}}{/dir} https://{{$root}}/blob/{{$tree}}{/dir}/{file}#L{line}">
 </head>
 <body>
 go get {{.GopkgPath}}
@@ -144,6 +144,10 @@ type Repo struct {
 	// either coming from branch names or from tag names. Version zero (v0)
 	// is only present in the list if it really exists in the repository.
 	AllVersions VersionList
+
+	// When there is a redirect in place, these are from the original request.
+	RedirUser string
+	RedirName string
 }
 
 // SetVersions records in the relevant fields the details about which
@@ -155,6 +159,18 @@ func (repo *Repo) SetVersions(all []Version) {
 			repo.FullVersion = v
 		}
 	}
+}
+
+// When there is a redirect in place, this will return the original repository
+// but preserving the data for the new repository.
+func (repo *Repo) Original() *Repo {
+	if repo.RedirName == "" {
+		return repo
+	}
+	orig := *repo
+	orig.User = repo.RedirUser
+	orig.Name = repo.RedirName
+	return &orig
 }
 
 type repoBase struct {
@@ -215,6 +231,7 @@ func (repo *Repo) GopkgVersionRoot(version Version) string {
 	}
 }
 
+
 var patternOld = regexp.MustCompile(`^/(?:([a-z0-9][-a-z0-9]+)/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
 var patternNew = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?([a-zA-Z][-.a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)(?:\.git)?((?:/[a-zA-Z0-9][-.a-zA-Z0-9]*)*)$`)
 
@@ -260,6 +277,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	}
 
 	if r, ok := redirect[repoBase{repo.User, repo.Name}]; ok {
+		repo.RedirUser, repo.RedirName = repo.User, repo.Name
 		repo.User, repo.Name = r.user, r.name
 	}
 
