@@ -353,7 +353,7 @@ func sendNotFound(resp http.ResponseWriter, msg string, args ...interface{}) {
 const refsSuffix = ".git/info/refs?service=git-upload-pack"
 
 func proxyUploadPack(resp http.ResponseWriter, req *http.Request, repo *Repo) {
-	preq, err := http.NewRequest(req.Method, "https://"+repo.GitHubRoot()+"/git-upload-pack", req.Body)
+	preq, err := http.NewRequest(req.Method, "https://"+repo.GitHubRoot()+".git/git-upload-pack", req.Body)
 	if err != nil {
 		resp.WriteHeader(http.StatusInternalServerError)
 		resp.Write([]byte(fmt.Sprintf("Cannot create GitHub request: %v", err)))
