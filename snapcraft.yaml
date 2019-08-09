@@ -1,0 +1,28 @@
+name: gopkg
+version: 2018.03.27
+summary: Daemon that runs gopkg.in
+description: Daemon that runs gopkg.in
+base: core18
+
+confinement: strict
+grade: stable
+
+plugs:
+    network:
+    network-bind:
+
+apps:
+    gopkg:
+        command: gopkg
+        adapter: none
+
+    daemon:
+        command: gopkg -acme=$SNAP_DATA/certs -http=:80 -https=:443
+        daemon: simple
+
+parts:
+    code:
+        plugin: dump
+        source: .
+        stage:
+            - gopkg
