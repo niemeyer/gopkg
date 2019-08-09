@@ -97,7 +97,6 @@ func run() error {
 					"p1.gopkg.in",
 					"p2.gopkg.in",
 					"p3.gopkg.in",
-					"mup.labix.org",
 				),
 				Email: "gustavo@niemeyer.net",
 			}
