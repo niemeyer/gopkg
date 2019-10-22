@@ -217,6 +217,43 @@ type packageData struct {
 	GitTreeName    string
 }
 
+type cacheEntry struct {
+	t  time.Time
+	pd *packageData
+}
+
+var cache map[string]*cacheEntry = make(map[string]*cacheEntry)
+var cacheLock sync.RWMutex
+
+const cacheTTL = 1 * time.Hour
+
+func cacheGet(name string) *packageData {
+	cacheLock.RLock()
+	defer cacheLock.RUnlock()
+	if entry, ok := cache[name]; ok {
+		if time.Since(entry.t) < cacheTTL {
+			return entry.pd
+		}
+		log.Println("ignoring expired cache entry for", name)
+	}
+	return nil
+}
+
+func cacheSet(name string, pd *packageData) {
+	cacheLock.Lock()
+	defer cacheLock.Unlock()
+	if entry, ok := cache[name]; ok {
+		if time.Since(entry.t) < cacheTTL {
+			return
+		}
+		log.Println("updating expired cache entry for", name)
+	}
+	cache[name] = &cacheEntry{
+		t:  time.Now(),
+		pd: pd,
+	}
+}
+
 // SearchResults is used with the godoc.org search API
 type SearchResults struct {
 	Results []struct {
@@ -227,7 +264,7 @@ type SearchResults struct {
 
 var regexpPackageName = regexp.MustCompile(`<h2 id="pkg-overview">package ([\p{L}_][\p{L}\p{Nd}_]*)</h2>`)
 
-func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) {
+func fetchPackageData(repo *Repo) *packageData {
 	data := &packageData{
 		Repo: repo,
 	}
@@ -254,10 +291,7 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 		data.LatestVersions = append([]Version{repo.FullVersion}, data.LatestVersions...)
 	}
 
-	var dataMutex sync.Mutex
-	wantResps := 2
-	gotResp := make(chan bool, wantResps)
-
+	name := make(chan string, 1)
 	go func() {
 		// Retrieve package name from godoc.org. This should be on a proper API.
 		godocResp, err := http.Get("https://godoc.org/" + repo.GopkgPath())
@@ -267,15 +301,13 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 			if err == nil {
 				matches := regexpPackageName.FindSubmatch(godocRespBytes)
 				if matches != nil {
-					dataMutex.Lock()
-					data.PackageName = string(matches[1])
-					dataMutex.Unlock()
+					name <- string(matches[1])
 				}
 			}
 		}
-		gotResp <- true
 	}()
 
+	synopsis := make(chan string, 1)
 	go func() {
 		// Retrieve synopsis from godoc.org. This should be on a package path API
 		// rather than a search.
@@ -288,29 +320,37 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 				gopkgPath := repo.GopkgPath()
 				for _, result := range searchResults.Results {
 					if result.Path == gopkgPath {
-						dataMutex.Lock()
-						data.Synopsis = result.Synopsis
-						dataMutex.Unlock()
+						synopsis <- result.Synopsis
 						break
 					}
 				}
 			}
 		}
-		gotResp <- true
 	}()
 
+	wantResps := 2
 	r := 0
 	for r < wantResps {
 		select {
-		case <-gotResp:
+		case data.PackageName = <-name:
+			r++
+		case data.Synopsis = <-synopsis:
 			r++
 		case <-time.After(3 * time.Second):
 			r = wantResps
 		}
 	}
 
-	dataMutex.Lock()
-	defer dataMutex.Unlock()
+	cacheSet(repo.GopkgPath(), data)
+	return data
+}
+
+func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) {
+	var data *packageData
+
+	if data = cacheGet(repo.GopkgPath()); data == nil {
+		data = fetchPackageData(repo)
+	}
 
 	err := packageTemplate.Execute(resp, data)
 	if err != nil {
