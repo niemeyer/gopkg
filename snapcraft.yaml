@@ -13,7 +13,7 @@ plugs:
 
 apps:
     gopkg:
-        command: gopkg
+        command: bin/gopkg
         adapter: none
 
     daemon:
@@ -21,8 +21,16 @@ apps:
         daemon: simple
 
 parts:
-    code:
-        plugin: dump
+    gopkg:
+        plugin: go
         source: .
-        stage:
-            - gopkg
+        go-importpath: niemeyer/gopkg
+        build-packages:
+            - git
+        build-environment:
+            # https://github.com/golang/go/issues/33840
+            - CGO_ENABLED: "0"
+        build-snaps:
+            - go
+        prime:
+            - bin/gopkg
