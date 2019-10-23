@@ -120,7 +120,7 @@ const packageTemplateString = `<!DOCTYPE html>
 					<div class="col-sm-12" >
 						<div class="page-header">
 							<h1>{{.Repo.GopkgPath}}</h1>
-							{{.Synopsis}}
+							{{.Package.Synopsis}}
 						</div>
 					</div>
 				</div>
@@ -146,7 +146,7 @@ const packageTemplateString = `<!DOCTYPE html>
 							<div>
 								<p>To import this package, add the following line to your code:</p>
 								<pre>import "{{.Repo.GopkgPath}}"</pre>
-								{{if .PackageName}}<p>Refer to it as <i>{{.PackageName}}</i>.{{end}}
+								{{if .Package.Name}}<p>Refer to it as <i>{{.Package.Name}}</i>.{{end}}
 							</div>
 							<div>
 								<p>For more details, see the API documentation.</p>
@@ -209,49 +209,43 @@ func init() {
 	}
 }
 
-type packageData struct {
+type templateData struct {
 	Repo           *Repo
 	LatestVersions VersionList // Contains only the latest version for each major
-	PackageName    string      // Actual package identifier as specified in https://golang.org/ref/spec#PackageClause
-	Synopsis       string
-	GitTreeName    string
+	Package        *packageData
 }
 
-type cacheEntry struct {
-	t  time.Time
-	pd *packageData
+type packageData struct {
+	Name      string // Actual package identifier as specified in https://golang.org/ref/spec#PackageClause
+	Synopsis  string
+	Timestamp time.Time
 }
 
-var cache map[string]*cacheEntry = make(map[string]*cacheEntry)
-var cacheLock sync.RWMutex
+var packageDataCache map[string]*packageData = make(map[string]*packageData)
+var packageDataCacheLock sync.RWMutex
 
-const cacheTTL = 1 * time.Hour
+const packageDataCacheTTL = 1 * time.Hour
 
-func cacheGet(name string) *packageData {
-	cacheLock.RLock()
-	defer cacheLock.RUnlock()
-	if entry, ok := cache[name]; ok {
-		if time.Since(entry.t) < cacheTTL {
-			return entry.pd
+func getPackageData(name string) *packageData {
+	packageDataCacheLock.RLock()
+	defer packageDataCacheLock.RUnlock()
+	if pd, ok := packageDataCache[name]; ok {
+		if time.Since(pd.Timestamp) < packageDataCacheTTL {
+			return pd
 		}
-		log.Println("ignoring expired cache entry for", name)
 	}
 	return nil
 }
 
-func cacheSet(name string, pd *packageData) {
-	cacheLock.Lock()
-	defer cacheLock.Unlock()
-	if entry, ok := cache[name]; ok {
-		if time.Since(entry.t) < cacheTTL {
+func setPackageData(name string, pd *packageData) {
+	packageDataCacheLock.Lock()
+	defer packageDataCacheLock.Unlock()
+	if cpd, ok := packageDataCache[name]; ok {
+		if time.Since(cpd.Timestamp) < packageDataCacheTTL {
 			return
 		}
-		log.Println("updating expired cache entry for", name)
 	}
-	cache[name] = &cacheEntry{
-		t:  time.Now(),
-		pd: pd,
-	}
+	packageDataCache[name] = pd
 }
 
 // SearchResults is used with the godoc.org search API
@@ -264,32 +258,34 @@ type SearchResults struct {
 
 var regexpPackageName = regexp.MustCompile(`<h2 id="pkg-overview">package ([\p{L}_][\p{L}\p{Nd}_]*)</h2>`)
 
-func fetchPackageData(repo *Repo) *packageData {
-	data := &packageData{
-		Repo: repo,
-	}
-
+func calculateLatestVersions(repo *Repo) VersionList {
 	// Calculate the latest version for each major version, both stable and unstable.
-	latestVersions := make(map[int]Version)
+	versions := make(map[int]Version)
 	for _, v := range repo.AllVersions {
 		if v.Unstable {
 			continue
 		}
-		v2, exists := latestVersions[v.Major]
+		v2, exists := versions[v.Major]
 		if !exists || v2.Less(v) {
-			latestVersions[v.Major] = v
+			versions[v.Major] = v
 		}
 	}
-	data.LatestVersions = make(VersionList, 0, len(latestVersions))
-	for _, v := range latestVersions {
-		data.LatestVersions = append(data.LatestVersions, v)
+	latestVersions := make(VersionList, 0, len(versions))
+	for _, v := range versions {
+		latestVersions = append(latestVersions, v)
 	}
-	sort.Sort(sort.Reverse(data.LatestVersions))
+	sort.Sort(sort.Reverse(latestVersions))
 
 	if repo.FullVersion.Unstable {
 		// Prepend post-sorting so it shows first.
-		data.LatestVersions = append([]Version{repo.FullVersion}, data.LatestVersions...)
+		latestVersions = append([]Version{repo.FullVersion}, latestVersions...)
 	}
+
+	return latestVersions
+}
+
+func fetchPackageData(repo *Repo) *packageData {
+	data := &packageData{}
 
 	name := make(chan string, 1)
 	go func() {
@@ -330,7 +326,7 @@ func fetchPackageData(repo *Repo) *packageData {
 
 	timeout := time.After(3 * time.Second)
 	select {
-	case data.PackageName = <-name:
+	case data.Name = <-name:
 	case <-timeout:
 	}
 	select {
@@ -338,18 +334,23 @@ func fetchPackageData(repo *Repo) *packageData {
 	case <-timeout:
 	}
 
-	cacheSet(repo.GopkgPath(), data)
+	data.Timestamp = time.Now()
+	setPackageData(repo.GopkgPath(), data)
 	return data
 }
 
 func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) {
-	var data *packageData
+	var pkg *packageData
 
-	if data = cacheGet(repo.GopkgPath()); data == nil {
-		data = fetchPackageData(repo)
+	if pkg = getPackageData(repo.GopkgPath()); pkg == nil {
+		pkg = fetchPackageData(repo)
 	}
 
-	err := packageTemplate.Execute(resp, data)
+	err := packageTemplate.Execute(resp, &templateData{
+		Repo:           repo,
+		LatestVersions: calculateLatestVersions(repo),
+		Package:        pkg,
+	})
 	if err != nil {
 		log.Printf("error executing package page template: %v", err)
 	}
