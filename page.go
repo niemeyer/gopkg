@@ -111,7 +111,7 @@ const packageTemplateString = `<!DOCTYPE html>
 		<script type="text/javascript">
 			// If there's a URL fragment, assume it's an attempt to read a specific documentation entry. 
 			if (window.location.hash.length > 1) {
-				window.location = "http://godoc.org/{{.Repo.GopkgPath}}" + window.location.hash;
+				window.location = "https://godoc.org/{{.Repo.GopkgPath}}" + window.location.hash;
 			}
 		</script>
 		<div id="wrap" >
@@ -132,7 +132,7 @@ const packageTemplateString = `<!DOCTYPE html>
 				<div class="row" >
 					<div class="col-sm-12" >
 						<a class="btn btn-lg btn-info" href="https://{{.Repo.GitHubRoot}}/tree/{{.Repo.GitHubTree}}{{.Repo.SubPath}}" ><i class="fa fa-github"></i> Source Code</a>
-						<a class="btn btn-lg btn-info" href="http://godoc.org/{{.Repo.GopkgPath}}" ><i class="fa fa-info-circle"></i> API Documentation</a>
+						<a class="btn btn-lg btn-info" href="https://godoc.org/{{.Repo.GopkgPath}}" ><i class="fa fa-info-circle"></i> API Documentation</a>
 					</div>
 				</div>
 				<div class="row main" >
@@ -212,7 +212,7 @@ func init() {
 type packageData struct {
 	Repo           *Repo
 	LatestVersions VersionList // Contains only the latest version for each major
-	PackageName    string      // Actual package identifier as specified in http://golang.org/ref/spec#PackageClause
+	PackageName    string      // Actual package identifier as specified in https://golang.org/ref/spec#PackageClause
 	Synopsis       string
 	GitTreeName    string
 }
@@ -260,7 +260,7 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 
 	go func() {
 		// Retrieve package name from godoc.org. This should be on a proper API.
-		godocResp, err := http.Get("http://godoc.org/" + repo.GopkgPath())
+		godocResp, err := http.Get("https://godoc.org/" + repo.GopkgPath())
 		if err == nil {
 			godocRespBytes, err := ioutil.ReadAll(godocResp.Body)
 			godocResp.Body.Close()
@@ -279,7 +279,7 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 	go func() {
 		// Retrieve synopsis from godoc.org. This should be on a package path API
 		// rather than a search.
-		searchResp, err := http.Get("http://api.godoc.org/search?q=" + url.QueryEscape(repo.GopkgPath()))
+		searchResp, err := http.Get("https://api.godoc.org/search?q=" + url.QueryEscape(repo.GopkgPath()))
 		if err == nil {
 			searchResults := &SearchResults{}
 			err = json.NewDecoder(searchResp.Body).Decode(&searchResults)
