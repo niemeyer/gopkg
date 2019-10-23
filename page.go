@@ -328,17 +328,14 @@ func fetchPackageData(repo *Repo) *packageData {
 		}
 	}()
 
-	wantResps := 2
-	r := 0
-	for r < wantResps {
-		select {
-		case data.PackageName = <-name:
-			r++
-		case data.Synopsis = <-synopsis:
-			r++
-		case <-time.After(3 * time.Second):
-			r = wantResps
-		}
+	timeout := time.After(3 * time.Second)
+	select {
+	case data.PackageName = <-name:
+	case <-timeout:
+	}
+	select {
+	case data.Synopsis = <-synopsis:
+	case <-timeout:
 	}
 
 	cacheSet(repo.GopkgPath(), data)
