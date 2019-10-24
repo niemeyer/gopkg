@@ -224,7 +224,7 @@ type packageData struct {
 var packageDataCache map[string]*packageData = make(map[string]*packageData)
 var packageDataCacheLock sync.RWMutex
 
-const packageDataCacheTTL = 1 * time.Hour
+const packageDataCacheTTL = 1 * time.Minute
 
 func getPackageData(name string) *packageData {
 	packageDataCacheLock.RLock()
