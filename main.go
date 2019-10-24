@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -230,7 +231,6 @@ func (repo *Repo) GopkgVersionRoot(version Version) string {
 	}
 }
 
-
 var patternOld = regexp.MustCompile(`^/(?:([a-z0-9][-a-z0-9]+)/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
 var patternNew = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?([a-zA-Z][-.a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)(?:\.git)?((?:/[a-zA-Z0-9][-.a-zA-Z0-9]*)*)$`)
 
@@ -383,7 +383,46 @@ func proxyUploadPack(resp http.ResponseWriter, req *http.Request, repo *Repo) {
 var ErrNoRepo = errors.New("repository not found in GitHub")
 var ErrNoVersion = errors.New("version reference not found in GitHub")
 
+type refsCacheEntry struct {
+	refs      []byte
+	timestamp time.Time
+}
+
+var refsCache map[string]*refsCacheEntry = make(map[string]*refsCacheEntry)
+var refsCacheLock sync.RWMutex
+
+const refsCacheTTL = 1 * time.Minute
+
+func getRefs(root string) []byte {
+	refsCacheLock.RLock()
+	defer refsCacheLock.RUnlock()
+	if entry, ok := refsCache[root]; ok {
+		if time.Since(entry.timestamp) < refsCacheTTL {
+			return entry.refs
+		}
+	}
+	return nil
+}
+
+func setRefs(root string, refs []byte) {
+	refsCacheLock.Lock()
+	defer refsCacheLock.Unlock()
+	if entry, ok := refsCache[root]; ok {
+		if time.Since(entry.timestamp) < refsCacheTTL {
+			return
+		}
+	}
+	refsCache[root] = &refsCacheEntry{
+		refs:      refs,
+		timestamp: time.Now(),
+	}
+}
+
 func fetchRefs(repo *Repo) (data []byte, err error) {
+	if refs := getRefs(repo.GitHubRoot()); refs != nil {
+		return refs, nil
+	}
+
 	resp, err := httpClient.Get("https://" + repo.GitHubRoot() + refsSuffix)
 	if err != nil {
 		return nil, fmt.Errorf("cannot talk to GitHub: %v", err)
@@ -403,6 +442,7 @@ func fetchRefs(repo *Repo) (data []byte, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("error reading from GitHub: %v", err)
 	}
+	setRefs(repo.GitHubRoot(), data)
 	return data, err
 }
 
