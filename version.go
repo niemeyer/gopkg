@@ -32,6 +32,11 @@ func (v Version) String() string {
 	return fmt.Sprintf("v%d.%d.%d%s", v.Major, v.Minor, v.Patch, suffix)
 }
 
+// Major is the same as other
+func (v Version) MatchMajor(other Version) bool {
+	return v.Major == other.Major && v.Unstable == other.Unstable
+}
+
 // Less returns whether v is less than other.
 func (v Version) Less(other Version) bool {
 	if v.Major != other.Major {

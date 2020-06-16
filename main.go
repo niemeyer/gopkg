@@ -11,7 +11,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -89,18 +88,11 @@ func run() error {
 		server.Addr = *httpsFlag
 		if *acmeFlag != "" {
 			m := autocert.Manager{
-				ForceRSA:    true,
 				Prompt:      autocert.AcceptTOS,
 				Cache:       autocert.DirCache(*acmeFlag),
 				RenewBefore: 24 * 30 * time.Hour,
-				HostPolicy: autocert.HostWhitelist(
-					"localhost",
-					"gopkg.in",
-					"p1.gopkg.in",
-					"p2.gopkg.in",
-					"p3.gopkg.in",
-				),
-				Email: "gustavo@niemeyer.net",
+				HostPolicy:  autocert.HostWhitelist(MyWhiteList...),
+				Email:       "gustavo@niemeyer.net",
 			}
 			server.TLSConfig = &tls.Config{
 				GetCertificate: m.GetCertificate,
@@ -120,17 +112,18 @@ func run() error {
 var gogetTemplate = template.Must(template.New("").Parse(`
 <html>
 <head>
-<meta name="go-import" content="{{.Original.GopkgRoot}} git https://{{.Original.GopkgRoot}}">
-{{$root := .GitHubRoot}}{{$tree := .GitHubTree}}<meta name="go-source" content="{{.Original.GopkgRoot}} _ https://{{$root}}/tree/{{$tree}}{/dir} https://{{$root}}/blob/{{$tree}}{/dir}/{file}#L{line}">
+<meta name="go-import" content="{{.Original.MyPkgRoot}} git https://{{.Original.MyPkgRoot}}">
+{{$root := .GitSiteRoot}}{{$tree := .GitSiteTree}}<meta name="go-source" content="{{.Original.MyPkgRoot}} _ https://{{$root}}/tree/{{$tree}}{/dir} https://{{$root}}/blob/{{$tree}}{/dir}/{file}#L{line}">
 </head>
 <body>
-go get {{.GopkgPath}}
+go get {{.MyPkgPath}}
 </body>
 </html>
 `))
 
 // Repo represents a source code repository on GitHub.
 type Repo struct {
+	Domain       string
 	User         string
 	Name         string
 	SubPath      string
@@ -155,7 +148,7 @@ type Repo struct {
 func (repo *Repo) SetVersions(all []Version) {
 	repo.AllVersions = all
 	for _, v := range repo.AllVersions {
-		if v.Major == repo.MajorVersion.Major && v.Unstable == repo.MajorVersion.Unstable && repo.FullVersion.Less(v) {
+		if repo.MajorVersion.MatchMajor(v) && repo.FullVersion.Less(v) {
 			repo.FullVersion = v
 		}
 	}
@@ -173,57 +166,43 @@ func (repo *Repo) Original() *Repo {
 	return &orig
 }
 
-type repoBase struct {
-	user string
-	name string
-}
-
-var (
-	pattern = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?([a-zA-Z][-.a-zA-Z0-9]*)\.` +
-		`((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)(?:\.git)?((?:/[a-zA-Z0-9][-.a-zA-Z0-9]*)*)$`)
-	redirect = map[repoBase]repoBase{
-		// https://github.com/go-fsnotify/fsnotify/issues/1
-		{"", "fsnotify"}: {"fsnotify", "fsnotify"},
-	}
-)
-
-// GitHubRoot returns the repository root at GitHub, without a schema.
-func (repo *Repo) GitHubRoot() string {
-	if repo.User == "" {
-		return "github.com/go-" + repo.Name + "/" + repo.Name
-	} else {
-		return "github.com/" + repo.User + "/" + repo.Name
-	}
-}
-
-// GitHubTree returns the repository tree name at GitHub for the selected version.
-func (repo *Repo) GitHubTree() string {
+// GitSiteTree returns the repository tree name at GitHub for the selected version.
+func (repo *Repo) GitSiteTree() string {
 	if repo.FullVersion == InvalidVersion {
 		return "master"
 	}
 	return repo.FullVersion.String()
 }
 
-// GopkgRoot returns the package root at gopkg.in, without a schema.
-func (repo *Repo) GopkgRoot() string {
-	return repo.GopkgVersionRoot(repo.MajorVersion)
+// GitSiteRoot returns the repository root at GitHub, without a schema.
+func (repo *Repo) GitSiteRoot() string {
+	dir := repo.User + "/"
+	if dir == "/" {
+		dir = GetDefaultDir(repo.Domain, repo.Name)
+	}
+	return repo.Domain + "/" + dir + repo.Name
 }
 
-// GopkgPath returns the package path at gopkg.in, without a schema.
-func (repo *Repo) GopkgPath() string {
-	return repo.GopkgVersionRoot(repo.MajorVersion) + repo.SubPath
-}
-
-// GopkgVersionRoot returns the package root in gopkg.in for the
+// MyPkgVerRoot returns the package root in gopkg.in for the
 // provided version, without a schema.
-func (repo *Repo) GopkgVersionRoot(version Version) string {
+func (repo *Repo) MyPkgVerRoot(version Version) string {
 	version.Minor = -1
 	version.Patch = -1
 	v, dir := version.String(), ""
 	if repo.User != "" {
 		dir = repo.User + "/"
 	}
-	return "gopkg.in/" + dir + repo.Name + "." + v
+	return MyPkgDomain + "/" + dir + repo.Name + "." + v
+}
+
+// MyPkgRoot returns the package root at gopkg.in, without a schema.
+func (repo *Repo) MyPkgRoot() string {
+	return repo.MyPkgVerRoot(repo.MajorVersion)
+}
+
+// MyPkgPath returns the package path at gopkg.in, without a schema.
+func (repo *Repo) MyPkgPath() string {
+	return repo.MyPkgVerRoot(repo.MajorVersion) + repo.SubPath
 }
 
 func handler(resp http.ResponseWriter, req *http.Request) {
@@ -235,40 +214,14 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	log.Printf("%s requested %s", req.RemoteAddr, req.URL)
 
 	if req.URL.Path == "/" {
-		resp.Header().Set("Location", "https://labix.org/gopkg.in")
+		resp.Header().Set("Location", MyHomePage)
 		resp.WriteHeader(http.StatusTemporaryRedirect)
 		return
 	}
 
-	m := pattern.FindStringSubmatch(req.URL.Path)
-	if m == nil {
-		sendNotFound(resp, "Unsupported URL pattern; see the documentation at gopkg.in for details.")
-		return
-	}
-
-	if strings.Contains(m[3], ".") {
-		tpl := "Import paths take the major version only (.%s instead of .%s); see docs at gopkg.in for the reasoning."
-		sendNotFound(resp, tpl, m[3][:strings.Index(m[3], ".")], m[3])
-		return
-	}
-
-	repo := &Repo{
-		User:        m[1],
-		Name:        m[2],
-		SubPath:     m[4],
-		FullVersion: InvalidVersion,
-	}
-
-	if r, ok := redirect[repoBase{repo.User, repo.Name}]; ok {
-		repo.RedirUser, repo.RedirName = repo.User, repo.Name
-		repo.User, repo.Name = r.user, r.name
-	}
-
-	var ok bool
-	repo.MajorVersion, ok = parseVersion(m[3])
-	if !ok {
-		sendNotFound(resp, "Version %q improperly considered invalid; please warn the service maintainers.", m[3])
-		return
+	repo, err := CreateRepo(req.URL)
+	if err != nil {
+		sendNotFoundError(resp, err)
 	}
 
 	var changed []byte
@@ -283,7 +236,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	case nil:
 		// all ok
 	case ErrNoRepo:
-		sendNotFound(resp, "GitHub repository not found at https://%s", repo.GitHubRoot())
+		sendNotFound(resp, "GitHub repository not found at https://%s", repo.GitSiteRoot())
 		return
 	case ErrNoVersion:
 		major := repo.MajorVersion
@@ -294,7 +247,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 		}
 		v := major.String()
 		tpl := `GitHub repository at https://%s has no branch or tag "%s%s", "%s.N%s" or "%s.N.M%s"`
-		sendNotFound(resp, tpl, repo.GitHubRoot(), v, suffix, v, suffix, v, suffix)
+		sendNotFound(resp, tpl, repo.GitSiteRoot(), v, suffix, v, suffix, v, suffix)
 		return
 	default:
 		resp.WriteHeader(http.StatusBadGateway)
@@ -334,10 +287,14 @@ func sendNotFound(resp http.ResponseWriter, msg string, args ...interface{}) {
 	resp.Write([]byte(msg))
 }
 
+func sendNotFoundError(resp http.ResponseWriter, err error) {
+	sendNotFound(resp, err.Error())
+}
+
 const refsSuffix = ".git/info/refs?service=git-upload-pack"
 
 func proxyUploadPack(resp http.ResponseWriter, req *http.Request, repo *Repo) {
-	preq, err := http.NewRequest(req.Method, "https://"+repo.GitHubRoot()+"/git-upload-pack", req.Body)
+	preq, err := http.NewRequest(req.Method, "https://"+repo.GitSiteRoot()+"/git-upload-pack", req.Body)
 	if err != nil {
 		resp.WriteHeader(http.StatusInternalServerError)
 		resp.Write([]byte(fmt.Sprintf("Cannot create GitHub request: %v", err)))
@@ -408,11 +365,11 @@ func setRefs(root string, refs []byte) {
 }
 
 func fetchRefs(repo *Repo) (data []byte, err error) {
-	if refs := getRefs(repo.GitHubRoot()); refs != nil {
+	if refs := getRefs(repo.GitSiteRoot()); refs != nil {
 		return refs, nil
 	}
 
-	resp, err := httpClient.Get("https://" + repo.GitHubRoot() + refsSuffix)
+	resp, err := httpClient.Get("https://" + repo.GitSiteRoot() + refsSuffix)
 	if err != nil {
 		return nil, fmt.Errorf("cannot talk to GitHub: %v", err)
 	}
@@ -431,7 +388,7 @@ func fetchRefs(repo *Repo) (data []byte, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("error reading from GitHub: %v", err)
 	}
-	setRefs(repo.GitHubRoot(), data)
+	setRefs(repo.GitSiteRoot(), data)
 	return data, err
 }
 
