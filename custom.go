@@ -8,11 +8,12 @@ import (
 )
 
 const (
-	GitSiteDomain = "github.com"
-	MyPkgDomain   = "gopkg.in"
+	GitSiteDomain = "github.com" // the target domain
+	MyPkgDomain   = "gopkg.in"   // the proxy domain
 	MyHomePage    = "https://labix.org/gopkg.in"
 )
 
+// autocert whitelist
 var MyWhiteList = []string{
 	"localhost",
 	MyPkgDomain,
@@ -60,6 +61,7 @@ func ParseUrlPath(path string) (matches []string, major Version, err error) {
 	return
 }
 
+// parse url and create repo
 func CreateRepo(url *url.URL) (*Repo, error) {
 	matches, major, err := ParseUrlPath(url.Path)
 	if err != nil {
@@ -80,6 +82,7 @@ func CreateRepo(url *url.URL) (*Repo, error) {
 	return repo, nil
 }
 
+// for redir user and name
 type repoBase struct {
 	user string
 	name string
