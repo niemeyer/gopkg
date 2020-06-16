@@ -3,8 +3,9 @@ package main
 import (
 	"bytes"
 	"fmt"
-	. "gopkg.in/check.v1"
 	"sort"
+
+	. "gopkg.in/check.v1"
 )
 
 var _ = Suite(&RefsSuite{})

@@ -29,18 +29,18 @@ var (
 	acmeFlag  = flag.String("acme", "", "Auto-request TLS certs and store in given directory")
 )
 
-var httpServer = &http.Server{
-	ReadTimeout:  30 * time.Second,
-	WriteTimeout: 5 * time.Minute,
-}
-
-var httpClient = &http.Client{
-	Timeout: 10 * time.Second,
-}
-
-var bulkClient = &http.Client{
-	Timeout: 5 * time.Minute,
-}
+var (
+	httpServer = &http.Server{
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 5 * time.Minute,
+	}
+	httpClient = &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	bulkClient = &http.Client{
+		Timeout: 5 * time.Minute,
+	}
+)
 
 func main() {
 	if err := run(); err != nil {
@@ -63,7 +63,8 @@ func run() error {
 	if *acmeFlag != "" && (*certFlag != "" || *keyFlag != "") {
 		return fmt.Errorf("cannot provide -acme with -key or -cert")
 	}
-	if *acmeFlag == "" && (*httpsFlag != "" || *certFlag != "" || *keyFlag != "") && (*httpsFlag == "" || *certFlag == "" || *keyFlag == "") {
+	if *acmeFlag == "" && (*httpsFlag != "" || *certFlag != "" || *keyFlag != "") &&
+		(*httpsFlag == "" || *certFlag == "" || *keyFlag == "") {
 		return fmt.Errorf("-https -cert and -key must be used together")
 	}
 
@@ -71,7 +72,7 @@ func run() error {
 
 	if *acmeFlag != "" {
 		// So a potential error is seen upfront.
-		if err := os.MkdirAll(*acmeFlag, 0700); err != nil {
+		if err := os.MkdirAll(*acmeFlag, 0o700); err != nil {
 			return err
 		}
 	}
@@ -133,7 +134,6 @@ type Repo struct {
 	User         string
 	Name         string
 	SubPath      string
-	OldFormat    bool // The old /v2/pkg format.
 	MajorVersion Version
 
 	// FullVersion is the best version in AllVersions that matches MajorVersion.
@@ -178,10 +178,14 @@ type repoBase struct {
 	name string
 }
 
-var redirect = map[repoBase]repoBase{
-	// https://github.com/go-fsnotify/fsnotify/issues/1
-	{"", "fsnotify"}: {"fsnotify", "fsnotify"},
-}
+var (
+	pattern = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?([a-zA-Z][-.a-zA-Z0-9]*)\.` +
+		`((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)(?:\.git)?((?:/[a-zA-Z0-9][-.a-zA-Z0-9]*)*)$`)
+	redirect = map[repoBase]repoBase{
+		// https://github.com/go-fsnotify/fsnotify/issues/1
+		{"", "fsnotify"}: {"fsnotify", "fsnotify"},
+	}
+)
 
 // GitHubRoot returns the repository root at GitHub, without a schema.
 func (repo *Repo) GitHubRoot() string {
@@ -215,24 +219,12 @@ func (repo *Repo) GopkgPath() string {
 func (repo *Repo) GopkgVersionRoot(version Version) string {
 	version.Minor = -1
 	version.Patch = -1
-	v := version.String()
-	if repo.OldFormat {
-		if repo.User == "" {
-			return "gopkg.in/" + v + "/" + repo.Name
-		} else {
-			return "gopkg.in/" + repo.User + "/" + v + "/" + repo.Name
-		}
-	} else {
-		if repo.User == "" {
-			return "gopkg.in/" + repo.Name + "." + v
-		} else {
-			return "gopkg.in/" + repo.User + "/" + repo.Name + "." + v
-		}
+	v, dir := version.String(), ""
+	if repo.User != "" {
+		dir = repo.User + "/"
 	}
+	return "gopkg.in/" + dir + repo.Name + "." + v
 }
-
-var patternOld = regexp.MustCompile(`^/(?:([a-z0-9][-a-z0-9]+)/)?((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)/([a-zA-Z][-a-zA-Z0-9]*)(?:\.git)?((?:/[a-zA-Z][-a-zA-Z0-9]*)*)$`)
-var patternNew = regexp.MustCompile(`^/(?:([a-zA-Z0-9][-a-zA-Z0-9]+)/)?([a-zA-Z][-.a-zA-Z0-9]*)\.((?:v0|v[1-9][0-9]*)(?:\.0|\.[1-9][0-9]*){0,2}(?:-unstable)?)(?:\.git)?((?:/[a-zA-Z0-9][-.a-zA-Z0-9]*)*)$`)
 
 func handler(resp http.ResponseWriter, req *http.Request) {
 	if req.URL.Path == "/health-check" {
@@ -248,22 +240,15 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	m := patternNew.FindStringSubmatch(req.URL.Path)
-	oldFormat := false
+	m := pattern.FindStringSubmatch(req.URL.Path)
 	if m == nil {
-		m = patternOld.FindStringSubmatch(req.URL.Path)
-		if m == nil {
-			sendNotFound(resp, "Unsupported URL pattern; see the documentation at gopkg.in for details.")
-			return
-		}
-		// "/v2/name" <= "/name.v2"
-		m[2], m[3] = m[3], m[2]
-		oldFormat = true
+		sendNotFound(resp, "Unsupported URL pattern; see the documentation at gopkg.in for details.")
+		return
 	}
 
 	if strings.Contains(m[3], ".") {
-		sendNotFound(resp, "Import paths take the major version only (.%s instead of .%s); see docs at gopkg.in for the reasoning.",
-			m[3][:strings.Index(m[3], ".")], m[3])
+		tpl := "Import paths take the major version only (.%s instead of .%s); see docs at gopkg.in for the reasoning."
+		sendNotFound(resp, tpl, m[3][:strings.Index(m[3], ".")], m[3])
 		return
 	}
 
@@ -271,7 +256,6 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 		User:        m[1],
 		Name:        m[2],
 		SubPath:     m[4],
-		OldFormat:   oldFormat,
 		FullVersion: InvalidVersion,
 	}
 
@@ -309,7 +293,8 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 			suffix = unstableSuffix
 		}
 		v := major.String()
-		sendNotFound(resp, `GitHub repository at https://%s has no branch or tag "%s%s", "%s.N%s" or "%s.N.M%s"`, repo.GitHubRoot(), v, suffix, v, suffix, v, suffix)
+		tpl := `GitHub repository at https://%s has no branch or tag "%s%s", "%s.N%s" or "%s.N.M%s"`
+		sendNotFound(resp, tpl, repo.GitHubRoot(), v, suffix, v, suffix, v, suffix)
 		return
 	default:
 		resp.WriteHeader(http.StatusBadGateway)
@@ -380,16 +365,20 @@ func proxyUploadPack(resp http.ResponseWriter, req *http.Request, repo *Repo) {
 	}
 }
 
-var ErrNoRepo = errors.New("repository not found in GitHub")
-var ErrNoVersion = errors.New("version reference not found in GitHub")
+var (
+	ErrNoRepo    = errors.New("repository not found in GitHub")
+	ErrNoVersion = errors.New("version reference not found in GitHub")
+)
 
 type refsCacheEntry struct {
 	refs      []byte
 	timestamp time.Time
 }
 
-var refsCache map[string]*refsCacheEntry = make(map[string]*refsCacheEntry)
-var refsCacheLock sync.RWMutex
+var (
+	refsCache     map[string]*refsCacheEntry = make(map[string]*refsCacheEntry)
+	refsCacheLock sync.RWMutex
+)
 
 const refsCacheTTL = 1 * time.Minute
 
@@ -451,7 +440,7 @@ func changeRefs(data []byte, major Version) (changed []byte, versions VersionLis
 	var mlinei, mlinej int // master reference line start/end
 	var vrefhash string
 	var vrefname string
-	var vrefv = InvalidVersion
+	vrefv := InvalidVersion
 
 	// Record all available versions, the locations of the master and HEAD lines,
 	// and details of the best reference satisfying the requested major version.
