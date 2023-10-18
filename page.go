@@ -120,7 +120,7 @@ const packageTemplateString = `<!DOCTYPE html>
 					<div class="col-sm-12" >
 						<div class="page-header">
 							<h1>{{.Repo.GopkgPath}}</h1>
-							{{.Synopsis}}
+							{{.Package.Synopsis}}
 						</div>
 					</div>
 				</div>
@@ -146,7 +146,7 @@ const packageTemplateString = `<!DOCTYPE html>
 							<div>
 								<p>To import this package, add the following line to your code:</p>
 								<pre>import "{{.Repo.GopkgPath}}"</pre>
-								{{if .PackageName}}<p>Refer to it as <i>{{.PackageName}}</i>.{{end}}
+								{{if .Package.Name}}<p>Refer to it as <i>{{.Package.Name}}</i>.{{end}}
 							</div>
 							<div>
 								<p>For more details, see the API documentation.</p>
@@ -209,12 +209,43 @@ func init() {
 	}
 }
 
-type packageData struct {
+type templateData struct {
 	Repo           *Repo
 	LatestVersions VersionList // Contains only the latest version for each major
-	PackageName    string      // Actual package identifier as specified in https://golang.org/ref/spec#PackageClause
-	Synopsis       string
-	GitTreeName    string
+	Package        *packageData
+}
+
+type packageData struct {
+	Name      string // Actual package identifier as specified in https://golang.org/ref/spec#PackageClause
+	Synopsis  string
+	Timestamp time.Time
+}
+
+var packageDataCache map[string]*packageData = make(map[string]*packageData)
+var packageDataCacheLock sync.RWMutex
+
+const packageDataCacheTTL = 1 * time.Minute
+
+func getPackageData(name string) *packageData {
+	packageDataCacheLock.RLock()
+	defer packageDataCacheLock.RUnlock()
+	if pd, ok := packageDataCache[name]; ok {
+		if time.Since(pd.Timestamp) < packageDataCacheTTL {
+			return pd
+		}
+	}
+	return nil
+}
+
+func setPackageData(name string, pd *packageData) {
+	packageDataCacheLock.Lock()
+	defer packageDataCacheLock.Unlock()
+	if cpd, ok := packageDataCache[name]; ok {
+		if time.Since(cpd.Timestamp) < packageDataCacheTTL {
+			return
+		}
+	}
+	packageDataCache[name] = pd
 }
 
 // SearchResults is used with the godoc.org search API
@@ -227,37 +258,36 @@ type SearchResults struct {
 
 var regexpPackageName = regexp.MustCompile(`<h2 id="pkg-overview">package ([\p{L}_][\p{L}\p{Nd}_]*)</h2>`)
 
-func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) {
-	data := &packageData{
-		Repo: repo,
-	}
-
+func calculateLatestVersions(repo *Repo) VersionList {
 	// Calculate the latest version for each major version, both stable and unstable.
-	latestVersions := make(map[int]Version)
+	versions := make(map[int]Version)
 	for _, v := range repo.AllVersions {
 		if v.Unstable {
 			continue
 		}
-		v2, exists := latestVersions[v.Major]
+		v2, exists := versions[v.Major]
 		if !exists || v2.Less(v) {
-			latestVersions[v.Major] = v
+			versions[v.Major] = v
 		}
 	}
-	data.LatestVersions = make(VersionList, 0, len(latestVersions))
-	for _, v := range latestVersions {
-		data.LatestVersions = append(data.LatestVersions, v)
+	latestVersions := make(VersionList, 0, len(versions))
+	for _, v := range versions {
+		latestVersions = append(latestVersions, v)
 	}
-	sort.Sort(sort.Reverse(data.LatestVersions))
+	sort.Sort(sort.Reverse(latestVersions))
 
 	if repo.FullVersion.Unstable {
 		// Prepend post-sorting so it shows first.
-		data.LatestVersions = append([]Version{repo.FullVersion}, data.LatestVersions...)
+		latestVersions = append([]Version{repo.FullVersion}, latestVersions...)
 	}
 
-	var dataMutex sync.Mutex
-	wantResps := 2
-	gotResp := make(chan bool, wantResps)
+	return latestVersions
+}
 
+func fetchPackageData(repo *Repo) *packageData {
+	data := &packageData{}
+
+	name := make(chan string, 1)
 	go func() {
 		// Retrieve package name from godoc.org. This should be on a proper API.
 		godocResp, err := http.Get("https://godoc.org/" + repo.GopkgPath())
@@ -267,15 +297,13 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 			if err == nil {
 				matches := regexpPackageName.FindSubmatch(godocRespBytes)
 				if matches != nil {
-					dataMutex.Lock()
-					data.PackageName = string(matches[1])
-					dataMutex.Unlock()
+					name <- string(matches[1])
 				}
 			}
 		}
-		gotResp <- true
 	}()
 
+	synopsis := make(chan string, 1)
 	go func() {
 		// Retrieve synopsis from godoc.org. This should be on a package path API
 		// rather than a search.
@@ -288,31 +316,41 @@ func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) 
 				gopkgPath := repo.GopkgPath()
 				for _, result := range searchResults.Results {
 					if result.Path == gopkgPath {
-						dataMutex.Lock()
-						data.Synopsis = result.Synopsis
-						dataMutex.Unlock()
+						synopsis <- result.Synopsis
 						break
 					}
 				}
 			}
 		}
-		gotResp <- true
 	}()
 
-	r := 0
-	for r < wantResps {
-		select {
-		case <-gotResp:
-			r++
-		case <-time.After(3 * time.Second):
-			r = wantResps
-		}
+	timeout := time.After(3 * time.Second)
+	select {
+	case data.Name = <-name:
+	case <-timeout:
+	}
+	select {
+	case data.Synopsis = <-synopsis:
+	case <-timeout:
 	}
 
-	dataMutex.Lock()
-	defer dataMutex.Unlock()
+	data.Timestamp = time.Now()
+	setPackageData(repo.GopkgPath(), data)
+	return data
+}
 
-	err := packageTemplate.Execute(resp, data)
+func renderPackagePage(resp http.ResponseWriter, req *http.Request, repo *Repo) {
+	var pkg *packageData
+
+	if pkg = getPackageData(repo.GopkgPath()); pkg == nil {
+		pkg = fetchPackageData(repo)
+	}
+
+	err := packageTemplate.Execute(resp, &templateData{
+		Repo:           repo,
+		LatestVersions: calculateLatestVersions(repo),
+		Package:        pkg,
+	})
 	if err != nil {
 		log.Printf("error executing package page template: %v", err)
 	}
