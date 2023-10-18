@@ -131,7 +131,6 @@ func parseVersionPart(s string, i int) (part int, unstable bool, newi int) {
 			}
 		}
 	}
-	panic("unreachable")
 }
 
 // VersionList implements sort.Interface

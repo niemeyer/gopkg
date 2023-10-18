@@ -29,17 +29,19 @@ var (
 	acmeFlag  = flag.String("acme", "", "Auto-request TLS certs and store in given directory")
 )
 
-var httpServer = &http.Server{
-	ReadTimeout:  30 * time.Second,
-	WriteTimeout: 5 * time.Minute,
-}
-
 var httpClient = &http.Client{
 	Timeout: 10 * time.Second,
 }
 
 var bulkClient = &http.Client{
 	Timeout: 5 * time.Minute,
+}
+
+func newServer() *http.Server {
+	return &http.Server{
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 5 * time.Minute,
+	}
 }
 
 func main() {
@@ -77,14 +79,14 @@ func run() error {
 	}
 
 	if *httpFlag != "" && (*httpsFlag == "" || *acmeFlag == "") {
-		server := *httpServer
+		server := newServer()
 		server.Addr = *httpFlag
 		go func() {
 			ch <- server.ListenAndServe()
 		}()
 	}
 	if *httpsFlag != "" {
-		server := *httpServer
+		server := newServer()
 		server.Addr = *httpsFlag
 		if *acmeFlag != "" {
 			m := autocert.Manager{
@@ -500,10 +502,9 @@ func changeRefs(data []byte, major Version) (changed []byte, versions VersionLis
 		}
 
 		if strings.HasPrefix(name, "refs/heads/v") || strings.HasPrefix(name, "refs/tags/v") {
-			if strings.HasSuffix(name, "^{}") {
-				// Annotated tag is peeled off and overrides the same version just parsed.
-				name = name[:len(name)-3]
-			}
+			// Annotated tag is peeled off and overrides the same version just parsed.
+			name = strings.TrimSuffix(name, "^{}")
+
 			v, ok := parseVersion(name[strings.IndexByte(name, 'v'):])
 			if ok && major.Contains(v) && (v == vrefv || !vrefv.IsValid() || vrefv.Less(v)) {
 				vrefv = v
