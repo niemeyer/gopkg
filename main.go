@@ -185,12 +185,17 @@ var redirect = map[repoBase]repoBase{
 	{"", "fsnotify"}: {"fsnotify", "fsnotify"},
 }
 
+const (
+	githubCom = "github.com"
+	gopkgIn   = "gopkg.in"
+)
+
 // GitHubRoot returns the repository root at GitHub, without a schema.
 func (repo *Repo) GitHubRoot() string {
 	if repo.User == "" {
-		return "github.com/go-" + repo.Name + "/" + repo.Name
+		return githubCom + "/go-" + repo.Name + "/" + repo.Name
 	} else {
-		return "github.com/" + repo.User + "/" + repo.Name
+		return githubCom + "/" + repo.User + "/" + repo.Name
 	}
 }
 
@@ -220,15 +225,15 @@ func (repo *Repo) GopkgVersionRoot(version Version) string {
 	v := version.String()
 	if repo.OldFormat {
 		if repo.User == "" {
-			return "gopkg.in/" + v + "/" + repo.Name
+			return gopkgIn + "/" + v + "/" + repo.Name
 		} else {
-			return "gopkg.in/" + repo.User + "/" + v + "/" + repo.Name
+			return gopkgIn + "/" + repo.User + "/" + v + "/" + repo.Name
 		}
 	} else {
 		if repo.User == "" {
-			return "gopkg.in/" + repo.Name + "." + v
+			return gopkgIn + "/" + repo.Name + "." + v
 		} else {
-			return "gopkg.in/" + repo.User + "/" + repo.Name + "." + v
+			return gopkgIn + "/" + repo.User + "/" + repo.Name + "." + v
 		}
 	}
 }
@@ -292,6 +297,11 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 	var changed []byte
 	var versions VersionList
 	original, err := fetchRefs(repo)
+	if err == ErrTimeout {
+		// Retry once.
+		httpClient.CloseIdleConnections()
+		original, err = fetchRefs(repo)
+	}
 	if err == nil {
 		changed, versions, err = changeRefs(original, repo.MajorVersion)
 		repo.SetVersions(versions)
@@ -382,8 +392,11 @@ func proxyUploadPack(resp http.ResponseWriter, req *http.Request, repo *Repo) {
 	}
 }
 
-var ErrNoRepo = errors.New("repository not found in GitHub")
-var ErrNoVersion = errors.New("version reference not found in GitHub")
+var (
+	ErrNoRepo    = errors.New("repository not found in GitHub")
+	ErrNoVersion = errors.New("version reference not found in GitHub")
+	ErrTimeout   = errors.New("timeout")
+)
 
 type refsCacheEntry struct {
 	refs      []byte
@@ -427,7 +440,10 @@ func fetchRefs(repo *Repo) (data []byte, err error) {
 
 	resp, err := httpClient.Get("https://" + repo.GitHubRoot() + refsSuffix)
 	if err != nil {
-		return nil, fmt.Errorf("cannot talk to GitHub: %v", err)
+		if os.IsTimeout(err) {
+			return nil, ErrTimeout
+		}
+		return nil, fmt.Errorf("cannot talk to GitHub: %w", err)
 	}
 	defer resp.Body.Close()
 
